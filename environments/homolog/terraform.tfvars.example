@@ -1,0 +1,6 @@
+vpc_id = "vpc-xxxxxxxxxxxxxxxxx"
+
+subnet_ids = [
+  "subnet-xxxxxxxxxxxxxxxxx",
+  "subnet-yyyyyyyyyyyyyyyyy"
+]
