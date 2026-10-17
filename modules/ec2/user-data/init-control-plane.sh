@@ -1,25 +1,35 @@
 #!/bin/bash
 set -euo pipefail
 
+echo "Iniciando configuracao do Kubernetes Control Plane..."
+
 # Evitar inicializacao duplicada
 if [ -f /etc/kubernetes/admin.conf ]; then
   echo "Control Plane ja inicializado."
   exit 0
 fi
 
+# Obter IP privado da instancia
+NODE_IP=$(ip -4 route get 1.1.1.1 | awk '{print $7; exit}')
+
+if [ -z "$NODE_IP" ]; then
+  echo "ERRO: nao foi possivel identificar o IP da instancia."
+  exit 1
+fi
+
+echo "IP do Control Plane: $NODE_IP"
+
 # Inicializar Kubernetes
 kubeadm init \
-  --apiserver-advertise-address="$(hostname -I | awk '{print $1}')" \
+  --apiserver-advertise-address="$NODE_IP" \
   --pod-network-cidr=192.168.0.0/16
 
-# Configurar kubectl para o usuario ubuntu
-mkdir -p /home/ubuntu/.kube
+# Configurar kubectl para usuario ubuntu
+install -d -m 700 -o ubuntu -g ubuntu /home/ubuntu/.kube
 
-cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
-
-chown -R ubuntu:ubuntu /home/ubuntu/.kube
-
-chmod 600 /home/ubuntu/.kube/config
+install -m 600 -o ubuntu -g ubuntu \
+  /etc/kubernetes/admin.conf \
+  /home/ubuntu/.kube/config
 
 echo "Control Plane inicializado com sucesso."
-echo "Proxima etapa: instalar o CNI e associar o Worker."
+echo "Proxima etapa: instalar Calico e associar o Worker."

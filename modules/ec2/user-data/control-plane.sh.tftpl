@@ -1,0 +1,22 @@
+#!/bin/bash
+set -euo pipefail
+
+cat > /tmp/install-k8s.sh <<'K8S_INSTALL'
+${install_k8s}
+K8S_INSTALL
+
+cat > /tmp/init-control-plane.sh <<'CONTROL_PLANE_INIT'
+${init_control_plane}
+CONTROL_PLANE_INIT
+
+cat > /tmp/install-cni.sh <<'CNI_INSTALL'
+${install_cni}
+CNI_INSTALL
+
+chmod +x /tmp/install-k8s.sh \
+  /tmp/init-control-plane.sh \
+  /tmp/install-cni.sh
+
+bash /tmp/install-k8s.sh
+bash /tmp/init-control-plane.sh
+bash /tmp/install-cni.sh

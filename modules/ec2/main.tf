@@ -4,7 +4,11 @@ resource "aws_instance" "control_plane" {
   subnet_id              = var.subnet_id
   vpc_security_group_ids = [var.security_group_id]
 
-  user_data = file("${path.module}/user-data/install-k8s.sh")
+  user_data = templatefile("${path.module}/user-data/control-plane.sh.tftpl", {
+    install_k8s        = file("${path.module}/user-data/install-k8s.sh")
+    init_control_plane = file("${path.module}/user-data/init-control-plane.sh")
+    install_cni        = file("${path.module}/user-data/install-cni.sh")
+  })
 
   root_block_device {
     volume_size = 20
@@ -24,7 +28,9 @@ resource "aws_instance" "worker" {
   subnet_id              = var.subnet_id
   vpc_security_group_ids = [var.security_group_id]
 
-  user_data = file("${path.module}/user-data/install-k8s.sh")
+  user_data = templatefile("${path.module}/user-data/worker.sh.tftpl", {
+    install_k8s = file("${path.module}/user-data/install-k8s.sh")
+  })
 
   root_block_device {
     volume_size = 20

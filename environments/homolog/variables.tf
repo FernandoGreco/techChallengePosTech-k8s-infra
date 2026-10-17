@@ -12,4 +12,9 @@ variable "vpc_id" {
 variable "subnet_ids" {
   description = "IDs das subnets existentes"
   type        = list(string)
+
+  validation {
+    condition     = length(var.subnet_ids) > 0
+    error_message = "Informe pelo menos uma subnet."
+  }
 }

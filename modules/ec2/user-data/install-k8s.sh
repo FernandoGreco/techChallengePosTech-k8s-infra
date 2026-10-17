@@ -1,11 +1,13 @@
 #!/bin/bash
-set -euxo pipefail
+set -euo pipefail
+
+echo "Iniciando instalacao do Kubernetes..."
 
 # Desabilitar swap
 swapoff -a
 sed -i '/ swap / s/^/#/' /etc/fstab
 
-# Modulos do kernel
+# Persistir modulos do kernel
 cat > /etc/modules-load.d/k8s.conf <<EOF
 overlay
 br_netfilter
@@ -25,32 +27,52 @@ sysctl --system
 
 # Dependencias
 apt-get update
+
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  ca-certificates curl gpg apt-transport-https containerd
+  ca-certificates \
+  curl \
+  gpg \
+  apt-transport-https \
+  containerd
 
 # Configurar containerd
 mkdir -p /etc/containerd
+
 containerd config default > /etc/containerd/config.toml
-sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' \
+
+sed -i \
+  's/SystemdCgroup = false/SystemdCgroup = true/' \
   /etc/containerd/config.toml
 
+systemctl enable --now containerd
 systemctl restart containerd
-systemctl enable containerd
 
 # Repositorio Kubernetes v1.34
-mkdir -p -m 755 /etc/apt/keyrings
+install -d -m 755 /etc/apt/keyrings
 
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key \
+curl -fsSL \
+  https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key \
   | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /' \
+echo \
+  'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /' \
   > /etc/apt/sources.list.d/kubernetes.list
 
 apt-get update
 
+# Instalar componentes Kubernetes
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  kubelet kubeadm kubectl
+  kubelet \
+  kubeadm \
+  kubectl
 
+# Evitar atualizacoes automaticas dos componentes
 apt-mark hold kubelet kubeadm kubectl
 
 systemctl enable kubelet
+
+echo "Versoes instaladas:"
+kubeadm version -o short
+kubectl version --client
+
+echo "Kubernetes instalado com sucesso."

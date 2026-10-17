@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+
+cat > /tmp/install-k8s.sh <<'K8S_INSTALL'
+${install_k8s}
+K8S_INSTALL
+
+chmod 700 /tmp/install-k8s.sh
+
+bash /tmp/install-k8s.sh
+
+echo "Worker preparado. Aguardando associacao ao cluster."
