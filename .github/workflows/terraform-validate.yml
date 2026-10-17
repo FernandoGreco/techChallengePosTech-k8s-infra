@@ -1,0 +1,46 @@
+name: Terraform Validate
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - feature/terraform-k8s-infra
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: environments/homolog
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.5"
+
+      - name: Terraform Format
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Validate Kubernetes Scripts
+        run: |
+          bash -n ../../modules/ec2/user-data/install-k8s.sh
+          bash -n ../../modules/ec2/user-data/init-control-plane.sh
+          bash -n ../../modules/ec2/user-data/install-cni.sh
+          bash -n ../../modules/ec2/user-data/join-worker.sh
