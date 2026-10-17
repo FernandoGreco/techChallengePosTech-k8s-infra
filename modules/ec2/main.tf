@@ -3,6 +3,7 @@ resource "aws_instance" "control_plane" {
   instance_type          = var.instance_type
   subnet_id              = var.subnet_id
   vpc_security_group_ids = [var.security_group_id]
+  key_name               = "vockey"
 
   user_data = templatefile("${path.module}/user-data/control-plane.sh.tftpl", {
     install_k8s        = file("${path.module}/user-data/install-k8s.sh")
@@ -27,6 +28,7 @@ resource "aws_instance" "worker" {
   instance_type          = var.instance_type
   subnet_id              = var.subnet_id
   vpc_security_group_ids = [var.security_group_id]
+  key_name               = "vockey"
 
   user_data = templatefile("${path.module}/user-data/worker.sh.tftpl", {
     install_k8s = file("${path.module}/user-data/install-k8s.sh")
