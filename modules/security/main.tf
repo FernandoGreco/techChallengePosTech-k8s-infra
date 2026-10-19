@@ -29,11 +29,9 @@ resource "aws_vpc_security_group_egress_rule" "outbound" {
 
 resource "aws_vpc_security_group_ingress_rule" "ssh" {
   security_group_id = aws_security_group.k8s_nodes.id
-
-  cidr_ipv4   = "191.183.41.6/32"
-  from_port   = 22
-  to_port     = 22
-  ip_protocol = "tcp"
-
-  description = "Acesso SSH restrito ao IP do Fernando"
+  cidr_ipv4         = var.ssh_allowed_cidr
+  from_port         = 22
+  to_port           = 22
+  ip_protocol       = "tcp"
+  description       = "Acesso SSH restrito ao IP autorizado"
 }

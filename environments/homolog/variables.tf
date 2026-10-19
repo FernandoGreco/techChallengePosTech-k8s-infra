@@ -18,3 +18,18 @@ variable "subnet_ids" {
     error_message = "Informe pelo menos uma subnet."
   }
 }
+
+variable "ssh_key_name" {
+  description = "Nome do Key Pair existente na conta AWS"
+  type        = string
+}
+
+variable "ssh_allowed_cidr" {
+  description = "IP ou rede autorizada a acessar as instancias via SSH"
+  type        = string
+
+  validation {
+    condition     = can(cidrhost(var.ssh_allowed_cidr, 0))
+    error_message = "Informe um CIDR valido, por exemplo: 203.0.113.10/32."
+  }
+}

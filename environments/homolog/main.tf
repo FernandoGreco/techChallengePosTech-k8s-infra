@@ -11,9 +11,10 @@ data "aws_subnet" "existing" {
 module "security" {
   source = "../../modules/security"
 
-  vpc_id       = data.aws_vpc.existing.id
-  project_name = "techchallenge"
-  environment  = "homolog"
+  vpc_id           = data.aws_vpc.existing.id
+  project_name     = "techchallenge"
+  environment      = "homolog"
+  ssh_allowed_cidr = var.ssh_allowed_cidr
 }
 
 module "ec2" {
@@ -23,9 +24,9 @@ module "ec2" {
   environment       = "homolog"
   subnet_id         = var.subnet_ids[0]
   security_group_id = module.security.k8s_security_group_id
-
-  instance_type = "t3.medium"
-  ami_id        = data.aws_ami.ubuntu.id
+  instance_type     = "t3.medium"
+  ami_id            = data.aws_ami.ubuntu.id
+  ssh_key_name      = var.ssh_key_name
 }
 
 data "aws_ami" "ubuntu" {

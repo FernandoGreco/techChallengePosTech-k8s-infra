@@ -1,9 +1,10 @@
 resource "aws_instance" "control_plane" {
-  ami                    = var.ami_id
-  instance_type          = var.instance_type
-  subnet_id              = var.subnet_id
-  vpc_security_group_ids = [var.security_group_id]
-  key_name               = "vockey"
+  ami                         = var.ami_id
+  instance_type               = var.instance_type
+  subnet_id                   = var.subnet_id
+  associate_public_ip_address = true
+  vpc_security_group_ids      = [var.security_group_id]
+  key_name                    = var.ssh_key_name
 
   user_data = templatefile("${path.module}/user-data/control-plane.sh.tftpl", {
     install_k8s        = file("${path.module}/user-data/install-k8s.sh")
@@ -24,11 +25,12 @@ resource "aws_instance" "control_plane" {
 }
 
 resource "aws_instance" "worker" {
-  ami                    = var.ami_id
-  instance_type          = var.instance_type
-  subnet_id              = var.subnet_id
-  vpc_security_group_ids = [var.security_group_id]
-  key_name               = "vockey"
+  ami                         = var.ami_id
+  instance_type               = var.instance_type
+  subnet_id                   = var.subnet_id
+  associate_public_ip_address = true
+  vpc_security_group_ids      = [var.security_group_id]
+  key_name                    = var.ssh_key_name
 
   user_data = templatefile("${path.module}/user-data/worker.sh.tftpl", {
     install_k8s = file("${path.module}/user-data/install-k8s.sh")

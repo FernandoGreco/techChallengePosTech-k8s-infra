@@ -33,3 +33,13 @@ install -m 600 -o ubuntu -g ubuntu \
 
 echo "Control Plane inicializado com sucesso."
 echo "Proxima etapa: instalar Calico e associar o Worker."
+
+echo ""
+echo "Gerando comando de associacao do Worker..."
+
+kubeadm token create --print-join-command > /home/ubuntu/kubeadm-join.sh
+
+chmod 600 /home/ubuntu/kubeadm-join.sh
+chown ubuntu:ubuntu /home/ubuntu/kubeadm-join.sh
+
+echo "Comando de associacao gerado com sucesso."

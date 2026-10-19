@@ -14,3 +14,8 @@ variable "environment" {
   type        = string
   default     = "homolog"
 }
+
+variable "ssh_allowed_cidr" {
+  description = "CIDR autorizado para acesso SSH as instancias EC2"
+  type        = string
+}

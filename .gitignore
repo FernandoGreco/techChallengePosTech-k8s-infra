@@ -2,6 +2,7 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
+tfplan
 *.tfvars
 *.tfvars.json
 crash.log
@@ -13,3 +14,6 @@ crash.*.log
 .env.*
 *.pem
 *.key
+
+# Estados e dados Terraform separados por conta AWS
+.terraform-accounts/

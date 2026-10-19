@@ -22,3 +22,8 @@ variable "instance_type" {
 variable "ami_id" {
   type = string
 }
+
+variable "ssh_key_name" {
+  description = "Nome do Key Pair AWS utilizado pelas instancias EC2"
+  type        = string
+}
