@@ -61,7 +61,6 @@ if [[ ! -f "$STATE_FILE" ]]; then
 fi
 
 export TF_DATA_DIR="${TERRAFORM_WORK_DIR}/data"
-export TF_CLI_ARGS_init="-backend-config=path=${STATE_FILE}"
 
 echo "Estado Terraform selecionado: $STATE_FILE"
 
@@ -72,8 +71,9 @@ echo "========================================"
 
 cd "$TERRAFORM_DIR"
 
-terraform init -reconfigure -input=false
-
+terraform init -reconfigure -input=false \
+  -backend-config="path=${STATE_FILE}"
+  
 echo ""
 echo "========================================"
 echo " Validando configuracao Terraform"
