@@ -78,7 +78,14 @@ TERRAFORM_WORK_DIR="${SCRIPT_DIR}/../.terraform-accounts/${CURRENT_AWS_ACCOUNT_I
 mkdir -p "$TERRAFORM_WORK_DIR"
 
 export TF_DATA_DIR="${TERRAFORM_WORK_DIR}/data"
-export TF_CLI_ARGS_init="-backend-config=path=${TERRAFORM_WORK_DIR}/terraform.tfstate"
+
+# Caminho do estado Terraform, separado por conta AWS
+TERRAFORM_STATE_PATH="${TERRAFORM_WORK_DIR}/terraform.tfstate"
+
+# No Git Bash do Windows, converter para um caminho compativel
+if command -v cygpath >/dev/null 2>&1; then
+  TERRAFORM_STATE_PATH="$(cygpath -m "$TERRAFORM_STATE_PATH")"
+fi
 
 echo ""
 echo "========================================"
@@ -87,7 +94,8 @@ echo "========================================"
 
 cd "$TERRAFORM_DIR"
 
-terraform init -reconfigure -input=false
+terraform init -reconfigure -input=false \
+  -backend-config="path=${TERRAFORM_STATE_PATH}"
 
 echo ""
 echo "========================================"
