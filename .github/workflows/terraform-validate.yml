@@ -4,21 +4,21 @@ on:
   pull_request:
     branches:
       - main
+      - homolog
+      - production
   push:
     branches:
       - feature/terraform-k8s-infra
+      - homolog
+      - production
 
 permissions:
   contents: read
 
 jobs:
   validate:
-    name: Validate Terraform
+    name: Validate Terraform and Shell
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: environments/homolog
 
     steps:
       - name: Checkout
@@ -33,14 +33,16 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Terraform Init
-        run: terraform init -backend=false
+        working-directory: environments/homolog
+        run: terraform init -backend=false -input=false
 
       - name: Terraform Validate
+        working-directory: environments/homolog
         run: terraform validate
 
-      - name: Validate Kubernetes Scripts
+      - name: Validate Shell Scripts
         run: |
-          bash -n ../../modules/ec2/user-data/install-k8s.sh
-          bash -n ../../modules/ec2/user-data/init-control-plane.sh
-          bash -n ../../modules/ec2/user-data/install-cni.sh
-          bash -n ../../modules/ec2/user-data/join-worker.sh
+          set -euo pipefail
+          find scripts modules/ec2/user-data \
+            -type f -name "*.sh" -print0 |
+            xargs -0 -r bash -n

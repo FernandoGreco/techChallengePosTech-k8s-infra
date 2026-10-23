@@ -73,7 +73,8 @@ echo "Chave SSH encontrada."
 echo "Usuario SSH: $SSH_USER"
 
 # Isolar os dados e o estado Terraform por conta AWS
-TERRAFORM_WORK_DIR="${SCRIPT_DIR}/../.terraform-accounts/${CURRENT_AWS_ACCOUNT_ID}"
+TERRAFORM_STATE_ROOT="${TERRAFORM_STATE_ROOT:-${SCRIPT_DIR}/../.terraform-accounts}"
+TERRAFORM_WORK_DIR="${TERRAFORM_STATE_ROOT}/${CURRENT_AWS_ACCOUNT_ID}"
 
 mkdir -p "$TERRAFORM_WORK_DIR"
 

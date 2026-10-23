@@ -1,30 +1,38 @@
 name: Terraform Deploy
 
 on:
+  push:
+    branches:
+      - homolog
   workflow_dispatch:
-    inputs:
-      environment:
-        description: "Ambiente de destino"
-        required: true
-        type: choice
-        options:
-          - homolog
 
 permissions:
   contents: read
 
 concurrency:
-  group: terraform-deploy-${{ inputs.environment }}
+  group: terraform-infra-homolog
   cancel-in-progress: false
 
 jobs:
-  prepare:
-    name: Prepare Terraform Deployment
-    runs-on: ubuntu-latest
+  deploy:
+    name: Deploy Kubernetes AWS
+    runs-on:
+      - self-hosted
+      - linux
+      - k8s-infra
 
-    defaults:
-      run:
-        working-directory: environments/homolog
+    environment: homolog
+
+    env:
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      SSH_USER: ubuntu
+      TERRAFORM_STATE_ROOT: ${{ vars.TERRAFORM_STATE_ROOT }}
+      TF_IN_AUTOMATION: "true"
 
     steps:
       - name: Checkout
@@ -34,18 +42,75 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.16.5"
+          terraform_wrapper: false
 
-      - name: Terraform Format
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Init
-        run: terraform init -backend=false
-
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Deployment Information
+      - name: Validate required configuration
+        shell: bash
+        env:
+          TFVARS_CONTENT: ${{ secrets.TFVARS_HOMOLOG }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
-          echo "Ambiente: ${{ inputs.environment }}"
-          echo "Terraform validado."
-          echo "Provisionamento AWS ainda nao habilitado."
+          set -euo pipefail
+
+          test -n "$EXPECTED_AWS_ACCOUNT_ID"
+          test -n "$TERRAFORM_STATE_ROOT"
+          test -n "$TFVARS_CONTENT"
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$AWS_ACCESS_KEY_ID"
+          test -n "$AWS_SECRET_ACCESS_KEY"
+          test -n "$AWS_SESSION_TOKEN"
+
+          case "$TERRAFORM_STATE_ROOT" in
+            /*) ;;
+            *) echo "TERRAFORM_STATE_ROOT deve ser absoluto"; exit 1 ;;
+          esac
+
+          aws sts get-caller-identity \
+            --query Account --output text |
+            grep -Fx "$EXPECTED_AWS_ACCOUNT_ID"
+
+      - name: Prepare Terraform and SSH files
+        shell: bash
+        env:
+          TFVARS_CONTENT: ${{ secrets.TFVARS_HOMOLOG }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+
+          umask 077
+
+          mkdir -p environments/homolog/accounts
+          printf '%s\n' "$TFVARS_CONTENT" > \
+            "environments/homolog/accounts/${EXPECTED_AWS_ACCOUNT_ID}.tfvars"
+
+          printf '%s\n' "$SSH_PRIVATE_KEY" > \
+            "$RUNNER_TEMP/k8s-infra-key.pem"
+
+          chmod 600 "$RUNNER_TEMP/k8s-infra-key.pem"
+
+          echo "SSH_PRIVATE_KEY_PATH=$RUNNER_TEMP/k8s-infra-key.pem" \
+            >> "$GITHUB_ENV"
+
+      - name: Validate Terraform and scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform fmt -check -recursive
+          find scripts modules/ec2/user-data \
+            -type f -name "*.sh" -print0 |
+            xargs -0 -r bash -n
+
+      - name: Deploy infrastructure and validate Kubernetes
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'sim\n' | bash scripts/deploy.sh
+          bash scripts/validate-k8s.sh
+
+      - name: Cleanup temporary credentials
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/k8s-infra-key.pem"
+          rm -f \
+            "environments/homolog/accounts/${EXPECTED_AWS_ACCOUNT_ID}.tfvars"
