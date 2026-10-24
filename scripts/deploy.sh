@@ -379,6 +379,21 @@ fi
 
 echo ""
 echo "========================================"
+echo " Instalando Metrics Server"
+echo "========================================"
+
+ssh \
+  -i "$SSH_PRIVATE_KEY_PATH" \
+  -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o StrictHostKeyChecking=accept-new \
+  "${SSH_USER}@${CONTROL_PLANE_PUBLIC_IP}" \
+  "sudo bash /tmp/install-metrics.sh"
+
+echo "Metrics Server instalado e API de metricas validada!"
+
+echo ""
+echo "========================================"
 echo " Estado final dos nos Kubernetes"
 echo "========================================"
 
