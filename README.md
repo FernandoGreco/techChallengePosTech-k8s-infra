@@ -51,6 +51,7 @@ modules/
       install-k8s.sh
       init-control-plane.sh
       install-cni.sh
+      install-metrics.sh
       join-worker.sh
       control-plane.sh.tftpl
       worker.sh.tftpl
@@ -125,6 +126,7 @@ bash -n ../../modules/ec2/user-data/install-k8s.sh
 bash -n ../../modules/ec2/user-data/init-control-plane.sh
 bash -n ../../modules/ec2/user-data/install-cni.sh
 bash -n ../../modules/ec2/user-data/join-worker.sh
+bash -n ../../modules/ec2/user-data/install-metrics.sh
 ```
 
 Esses comandos não criam recursos na AWS e não comprovam que o cluster funcionará após a implantação.
@@ -249,3 +251,30 @@ Executar a destruição somente após confirmar que não existem dependências o
 Infraestrutura desenvolvida como parte do Tech Challenge — Fase 3, Pós-Tech FIAP.
 
 **Status atual:** estrutura Terraform e scripts preparados, validação local e GitHub Actions funcionando. Provisionamento e testes na AWS pendentes.
+
+## Metrics Server e suporte ao HPA
+
+O cluster Kubernetes provisionado com kubeadm utiliza o Metrics Server para disponibilizar métricas de CPU e memória dos nós e Pods.
+
+A instalação está integrada à inicialização do Control Plane, após a instalação do Calico, por meio do script `modules/ec2/user-data/install-metrics.sh`.
+
+### Validação após o provisionamento
+
+Com o cluster em execução e o `kubectl` configurado para acessá-lo:
+
+```bash
+kubectl rollout status deployment/metrics-server -n kube-system --timeout=300s
+kubectl get apiservice v1beta1.metrics.k8s.io
+kubectl top nodes
+kubectl top pods -A
+```
+
+Os comandos `kubectl top` devem retornar métricas de utilização de CPU e memória. A disponibilidade do Deployment, isoladamente, não garante que a coleta de métricas esteja funcionando.
+
+### Integração com o HPA
+
+O Metrics Server fornece as métricas utilizadas pelo Horizontal Pod Autoscaler (HPA) para ajustar automaticamente a quantidade de réplicas de uma aplicação.
+
+A configuração do HPA, incluindo limites de réplicas e utilização de CPU, será mantida no repositório da aplicação NestJS.
+
+**Status:** integração configurada no Terraform e validada localmente. A instalação e a coleta de métricas ainda precisam ser testadas na AWS Academy.

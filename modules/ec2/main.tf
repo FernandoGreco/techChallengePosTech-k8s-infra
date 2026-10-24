@@ -10,6 +10,7 @@ resource "aws_instance" "control_plane" {
     install_k8s        = file("${path.module}/user-data/install-k8s.sh")
     init_control_plane = file("${path.module}/user-data/init-control-plane.sh")
     install_cni        = file("${path.module}/user-data/install-cni.sh")
+    install_metrics    = file("${path.module}/user-data/install-metrics.sh")
   })
 
   root_block_device {
