@@ -2,6 +2,24 @@
 
 set -euo pipefail
 
+# Remover acesso SSH temporario do GitHub Actions
+RUNNER_SSH_RULE_ID=""
+
+cleanup_runner_ssh() {
+  if [[ -n "${RUNNER_SSH_RULE_ID:-}" && -n "${K8S_SECURITY_GROUP_ID:-}" ]]; then
+    echo "Removendo regra SSH temporaria: $RUNNER_SSH_RULE_ID"
+    aws ec2 revoke-security-group-ingress \
+      --region "${AWS_REGION:-us-east-1}" \
+      --group-id "$K8S_SECURITY_GROUP_ID" \
+      --security-group-rule-ids "$RUNNER_SSH_RULE_ID" || {
+        echo "ERRO: nao foi possivel remover a regra SSH temporaria." >&2
+        return 1
+      }
+  fi
+}
+
+trap cleanup_runner_ssh EXIT
+
 # Diretorio do ambiente Terraform
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TERRAFORM_DIR="${SCRIPT_DIR}/../environments/homolog"
@@ -72,21 +90,6 @@ SSH_USER="${SSH_USER:-ubuntu}"
 echo "Chave SSH encontrada."
 echo "Usuario SSH: $SSH_USER"
 
-# Isolar os dados e o estado Terraform por conta AWS
-TERRAFORM_STATE_ROOT="${TERRAFORM_STATE_ROOT:-${SCRIPT_DIR}/../.terraform-accounts}"
-TERRAFORM_WORK_DIR="${TERRAFORM_STATE_ROOT}/${CURRENT_AWS_ACCOUNT_ID}"
-
-mkdir -p "$TERRAFORM_WORK_DIR"
-
-export TF_DATA_DIR="${TERRAFORM_WORK_DIR}/data"
-
-# Caminho do estado Terraform, separado por conta AWS
-TERRAFORM_STATE_PATH="${TERRAFORM_WORK_DIR}/terraform.tfstate"
-
-# No Git Bash do Windows, converter para um caminho compativel
-if command -v cygpath >/dev/null 2>&1; then
-  TERRAFORM_STATE_PATH="$(cygpath -m "$TERRAFORM_STATE_PATH")"
-fi
 
 echo ""
 echo "========================================"
@@ -95,8 +98,7 @@ echo "========================================"
 
 cd "$TERRAFORM_DIR"
 
-terraform init -reconfigure -input=false \
-  -backend-config="path=${TERRAFORM_STATE_PATH}"
+source "${SCRIPT_DIR}/backend.sh"
 
 echo ""
 echo "========================================"
@@ -132,7 +134,15 @@ echo "========================================"
 echo " Confirmacao do deploy"
 echo "========================================"
 
-read -r -p "Deseja aplicar este plano Terraform? (sim/nao): " CONFIRMATION
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  if [[ "${AUTO_APPROVE_DEPLOY:-}" != "true" ]]; then
+    echo "ERRO: AUTO_APPROVE_DEPLOY=true e obrigatorio no GitHub Actions." >&2
+    exit 1
+  fi
+  CONFIRMATION="sim"
+else
+  read -r -p "Deseja aplicar este plano Terraform? (sim/nao): " CONFIRMATION
+fi
 
 if [[ "$CONFIRMATION" != "sim" ]]; then
   echo "Deploy cancelado. Nenhum recurso foi aplicado."
@@ -143,6 +153,31 @@ echo ""
 echo "Aplicando plano Terraform..."
 
 terraform apply -input=false tfplan
+
+# Autorizar temporariamente o IP do GitHub Actions
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  echo "Configurando acesso SSH temporario do GitHub Actions..."
+  K8S_SECURITY_GROUP_ID="$(terraform output -raw k8s_security_group_id)"
+  RUNNER_PUBLIC_IP="$(curl -fsS --max-time 15 https://checkip.amazonaws.com | tr -d "\r\n")"
+
+  if [[ ! "$RUNNER_PUBLIC_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "ERRO: nao foi possivel identificar um IPv4 valido do runner."
+    exit 1
+  fi
+
+  RUNNER_SSH_RULE_ID="$(aws ec2 authorize-security-group-ingress \
+    --group-id "$K8S_SECURITY_GROUP_ID" \
+    --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_PUBLIC_IP}/32,Description=GitHub-Actions-Temporario}]" \
+    --query "SecurityGroupRules[0].SecurityGroupRuleId" \
+    --output text)"
+
+  if [[ ! "$RUNNER_SSH_RULE_ID" =~ ^sgr-[a-zA-Z0-9]+$ ]]; then
+    echo "ERRO: nao foi possivel identificar a regra SSH temporaria." >&2
+    exit 1
+  fi
+  echo "Acesso SSH temporario autorizado para o runner."
+fi
+
 
 echo ""
 echo "========================================"
@@ -422,3 +457,6 @@ echo ""
 echo "========================================"
 echo " Kubernetes provisionado e validado!"
 echo "========================================"
+# Executar validacao adicional enquanto o acesso SSH temporario ainda esta aberto.
+echo "Executando validacao final independente..."
+bash "${SCRIPT_DIR}/validate-k8s.sh"

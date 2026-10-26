@@ -16,10 +16,7 @@ concurrency:
 jobs:
   deploy:
     name: Deploy Kubernetes AWS
-    runs-on:
-      - self-hosted
-      - linux
-      - k8s-infra
+    runs-on: ubuntu-latest
 
     environment: homolog
 
@@ -31,8 +28,9 @@ jobs:
       AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       SSH_USER: ubuntu
-      TERRAFORM_STATE_ROOT: ${{ vars.TERRAFORM_STATE_ROOT }}
       TF_IN_AUTOMATION: "true"
+      AUTO_APPROVE_DEPLOY: ${{ vars.AUTO_APPROVE_DEPLOY }}
+      TF_BACKEND_BUCKET: ${{ vars.TF_BACKEND_BUCKET }}
 
     steps:
       - name: Checkout
@@ -53,17 +51,13 @@ jobs:
           set -euo pipefail
 
           test -n "$EXPECTED_AWS_ACCOUNT_ID"
-          test -n "$TERRAFORM_STATE_ROOT"
           test -n "$TFVARS_CONTENT"
           test -n "$SSH_PRIVATE_KEY"
           test -n "$AWS_ACCESS_KEY_ID"
           test -n "$AWS_SECRET_ACCESS_KEY"
           test -n "$AWS_SESSION_TOKEN"
+          test "$AUTO_APPROVE_DEPLOY" = "true"
 
-          case "$TERRAFORM_STATE_ROOT" in
-            /*) ;;
-            *) echo "TERRAFORM_STATE_ROOT deve ser absoluto"; exit 1 ;;
-          esac
 
           aws sts get-caller-identity \
             --query Account --output text |
@@ -104,13 +98,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf 'sim\n' | bash scripts/deploy.sh
-          bash scripts/validate-k8s.sh
+          bash scripts/deploy.sh
 
       - name: Cleanup temporary credentials
         if: always()
         shell: bash
         run: |
           rm -f "$RUNNER_TEMP/k8s-infra-key.pem"
-          rm -f \
-            "environments/homolog/accounts/${EXPECTED_AWS_ACCOUNT_ID}.tfvars"
+          rm -f "environments/homolog/accounts/${EXPECTED_AWS_ACCOUNT_ID}.tfvars"

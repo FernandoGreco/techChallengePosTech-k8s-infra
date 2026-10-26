@@ -17,3 +17,7 @@ crash.*.log
 
 # Estados e dados Terraform separados por conta AWS
 .terraform-accounts/
+# Chaves SSH e configuracoes temporarias
+*.pub
+*.p12
+*.pfx

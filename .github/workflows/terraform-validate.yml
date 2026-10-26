@@ -35,14 +35,18 @@ jobs:
       - name: Terraform Init
         working-directory: environments/homolog
         run: terraform init -backend=false -input=false
+        env:
+          TF_DATA_DIR: ${{ runner.temp }}/terraform-ci
 
       - name: Terraform Validate
         working-directory: environments/homolog
         run: terraform validate
+        env:
+          TF_DATA_DIR: ${{ runner.temp }}/terraform-ci
 
       - name: Validate Shell Scripts
         run: |
           set -euo pipefail
           find scripts modules/ec2/user-data \
             -type f -name "*.sh" -print0 |
-            xargs -0 -r bash -n
+            xargs -0 -r -n 1 bash -n

@@ -15,6 +15,10 @@ fi
 kubectl apply -f \
   "https://github.com/kubernetes-sigs/metrics-server/releases/download/${METRICS_SERVER_VERSION}/components.yaml"
 
+# Em kubeadm, certificados de kubelet normalmente nao possuem CA valida para Metrics Server.
+# Somente para laboratorio: usar --kubelet-insecure-tls (nao recomendado para producao).
+kubectl -n kube-system patch deployment metrics-server --type=json -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+
 echo "Aguardando inicializacao do Metrics Server..."
 
 kubectl rollout status \
