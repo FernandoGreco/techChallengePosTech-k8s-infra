@@ -2,6 +2,8 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.tfplan.enc
+*.private.*
 tfplan
 *.tfvars
 *.tfvars.json

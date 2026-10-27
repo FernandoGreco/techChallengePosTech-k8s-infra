@@ -2,107 +2,209 @@ name: Terraform Deploy
 
 on:
   push:
-    branches:
-      - homolog
+    branches: [homolog]
   workflow_dispatch:
+    inputs:
+      action:
+        description: 'validate has no AWS access; apply requires protected Environment approval'
+        type: choice
+        options: [validate, plan, apply]
+        default: validate
+      confirm_apply:
+        description: 'For apply only, type APLICAR HOMOLOG'
+        type: string
+        default: ''
+      verify_kubernetes:
+        description: 'Read-only SSH check; requires existing authorized network access'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: terraform-infra-homolog
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Deploy Kubernetes AWS
+  validate:
+    name: Required CI
+    uses: ./.github/workflows/terraform-validate.yml
+
+  request:
+    name: Check requested operation
+    needs: validate
     runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require homolog and explicit confirmation for AWS operations
+        env:
+          OPERATION: ${{ inputs.action || 'plan' }}
+          APPLY_CONFIRMATION: ${{ inputs.confirm_apply }}
+        run: |
+          set -euo pipefail
+          if [[ "$OPERATION" != validate && "$GITHUB_REF" != refs/heads/homolog ]]; then
+            echo 'AWS operations are restricted to homolog.' >&2; exit 1
+          fi
+          if [[ "$OPERATION" == apply && "$APPLY_CONFIRMATION" != 'APLICAR HOMOLOG' ]]; then
+            echo 'Explicit apply confirmation missing.' >&2; exit 1
+          fi
 
+  plan:
+    name: Plan homolog only
+    needs: [validate, request]
+    if: github.ref == 'refs/heads/homolog' && (github.event_name == 'push' || inputs.action == 'plan' || inputs.action == 'apply')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: homolog
-
     env:
       AWS_REGION: us-east-1
       AWS_DEFAULT_REGION: us-east-1
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      SSH_USER: ubuntu
-      TF_IN_AUTOMATION: "true"
-      AUTO_APPROVE_DEPLOY: ${{ vars.AUTO_APPROVE_DEPLOY }}
       TF_BACKEND_BUCKET: ${{ vars.TF_BACKEND_BUCKET }}
-
+      TF_IN_AUTOMATION: 'true'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v4
         with:
-          terraform_version: "1.16.5"
+          persist-credentials: false
+      - name: Isolate Terraform plan data
+        run: echo "TF_DATA_DIR=$RUNNER_TEMP/terraform-plan-data" >> "$GITHUB_ENV"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.16.5'
           terraform_wrapper: false
-
-      - name: Validate required configuration
-        shell: bash
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Confirm temporary Academy identity
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: bash scripts/check-aws-account.sh
+      - name: Generate saved plan and sanitized summary
+        working-directory: environments/homolog
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
           TFVARS_CONTENT: ${{ secrets.TFVARS_HOMOLOG }}
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-
-          test -n "$EXPECTED_AWS_ACCOUNT_ID"
-          test -n "$TFVARS_CONTENT"
-          test -n "$SSH_PRIVATE_KEY"
-          test -n "$AWS_ACCESS_KEY_ID"
-          test -n "$AWS_SECRET_ACCESS_KEY"
-          test -n "$AWS_SESSION_TOKEN"
-          test "$AUTO_APPROVE_DEPLOY" = "true"
-
-
-          aws sts get-caller-identity \
-            --query Account --output text |
-            grep -Fx "$EXPECTED_AWS_ACCOUNT_ID"
-
-      - name: Prepare Terraform and SSH files
-        shell: bash
-        env:
-          TFVARS_CONTENT: ${{ secrets.TFVARS_HOMOLOG }}
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-
           umask 077
-
-          mkdir -p environments/homolog/accounts
-          printf '%s\n' "$TFVARS_CONTENT" > \
-            "environments/homolog/accounts/${EXPECTED_AWS_ACCOUNT_ID}.tfvars"
-
-          printf '%s\n' "$SSH_PRIVATE_KEY" > \
-            "$RUNNER_TEMP/k8s-infra-key.pem"
-
-          chmod 600 "$RUNNER_TEMP/k8s-infra-key.pem"
-
-          echo "SSH_PRIVATE_KEY_PATH=$RUNNER_TEMP/k8s-infra-key.pem" \
-            >> "$GITHUB_ENV"
-
-      - name: Validate Terraform and scripts
-        shell: bash
-        run: |
-          set -euo pipefail
-          terraform fmt -check -recursive
-          find scripts modules/ec2/user-data \
-            -type f -name "*.sh" -print0 |
-            xargs -0 -r bash -n
-
-      - name: Deploy infrastructure and validate Kubernetes
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash scripts/deploy.sh
-
-      - name: Cleanup temporary credentials
+          test -n "$TFVARS_CONTENT"
+          printf '%s\n' "$TFVARS_CONTENT" > "$RUNNER_TEMP/homolog.tfvars"
+          source ../../scripts/backend.sh
+          terraform validate -no-color
+          if ! terraform plan -input=false -lock-timeout=60s -var-file="$RUNNER_TEMP/homolog.tfvars" -out="$RUNNER_TEMP/homolog.tfplan" > "$RUNNER_TEMP/plan-private.log" 2>&1; then
+            echo 'Plan failed; private log withheld. Check Academy credentials/backend/configuration.' >&2; exit 1
+          fi
+          terraform show -json "$RUNNER_TEMP/homolog.tfplan" | node ../../scripts/terraform-plan-summary.mjs | tee "$RUNNER_TEMP/plan-summary.json"
+          cat "$RUNNER_TEMP/plan-summary.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Encrypt exact plan for approved apply in this same run
+        if: inputs.action == 'apply'
+        env:
+          TF_PLAN_ENCRYPTION_KEY: ${{ secrets.TF_PLAN_ENCRYPTION_KEY }}
+        run: node scripts/plan-artifact.mjs encrypt "$RUNNER_TEMP/homolog.tfplan" "$RUNNER_TEMP/homolog.tfplan.enc"
+      - uses: actions/upload-artifact@v4
+        if: inputs.action == 'apply'
+        with:
+          name: homolog-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/homolog.tfplan.enc
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remove private runner files
         if: always()
-        shell: bash
+        run: rm -f "$RUNNER_TEMP/homolog.tfvars" "$RUNNER_TEMP/homolog.tfplan" "$RUNNER_TEMP/plan-private.log"
+
+  apply:
+    name: Apply reviewed saved plan
+    needs: [validate, request, plan]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/homolog' && inputs.action == 'apply' && inputs.confirm_apply == 'APLICAR HOMOLOG'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: homolog-apply
+    env:
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      TF_BACKEND_BUCKET: ${{ vars.TF_BACKEND_BUCKET }}
+      TF_IN_AUTOMATION: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.16.5'
+          terraform_wrapper: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fail closed if Environment approval protections are absent
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLY_CONFIRMATION: ${{ inputs.confirm_apply }}
+        run: node scripts/require-apply-approval.mjs
+      - name: Isolate Terraform apply data
+        run: echo "TF_DATA_DIR=$RUNNER_TEMP/terraform-apply-data" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          name: homolog-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/approved-plan
+      - name: Verify encrypted plan context, integrity and age
+        env:
+          TF_PLAN_ENCRYPTION_KEY: ${{ secrets.TF_PLAN_ENCRYPTION_KEY }}
+        run: node scripts/plan-artifact.mjs decrypt "$RUNNER_TEMP/approved-plan/homolog.tfplan.enc" "$RUNNER_TEMP/homolog.tfplan"
+      - name: Recheck Academy credentials after waiting for approval
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: bash scripts/check-aws-account.sh
+      - name: Apply only the saved reviewed plan
+        working-directory: environments/homolog
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
         run: |
-          rm -f "$RUNNER_TEMP/k8s-infra-key.pem"
-          rm -f "environments/homolog/accounts/${EXPECTED_AWS_ACCOUNT_ID}.tfvars"
+          set -euo pipefail
+          source ../../scripts/backend.sh
+          terraform show -json "$RUNNER_TEMP/homolog.tfplan" | node ../../scripts/terraform-plan-summary.mjs
+          if ! terraform apply -input=false -lock-timeout=60s "$RUNNER_TEMP/homolog.tfplan" > "$RUNNER_TEMP/apply-private.log" 2>&1; then
+            echo 'Apply failed; private log withheld. Diagnose before retry.' >&2; exit 1
+          fi
+          echo 'Saved plan applied. No bootstrap, Security Group mutation or application deploy was invoked.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove private runner files
+        if: always()
+        run: rm -f "$RUNNER_TEMP/homolog.tfplan" "$RUNNER_TEMP/apply-private.log"
+
+  verify-kubernetes:
+    name: Optional read-only Kubernetes checks
+    needs: [validate, request]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/homolog' && inputs.action == 'validate' && inputs.verify_kubernetes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: homolog
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify using existing network access and trusted host keys
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ vars.SSH_KNOWN_HOSTS }}
+          CONTROL_PLANE_HOST: ${{ vars.CONTROL_PLANE_HOST }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$SSH_PRIVATE_KEY"; test -n "$SSH_KNOWN_HOSTS"
+          [[ "$CONTROL_PLANE_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/key.pem"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/known_hosts"
+          ssh -i "$RUNNER_TEMP/key.pem" -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" "ubuntu@$CONTROL_PLANE_HOST" 'bash -se' < scripts/check-k8s-readonly.sh
+      - name: Remove SSH files
+        if: always()
+        run: rm -f "$RUNNER_TEMP/key.pem" "$RUNNER_TEMP/known_hosts"

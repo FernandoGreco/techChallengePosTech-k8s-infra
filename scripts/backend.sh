@@ -6,4 +6,4 @@ if [[ ! "$TF_BACKEND_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{2,62}$ ]]; then
   echo "ERRO: nome de bucket S3 invalido." >&2
   exit 1
 fi
-terraform init -reconfigure -input=false -backend-config="bucket=${TF_BACKEND_BUCKET}"
+terraform init -reconfigure -input=false -lockfile=readonly -backend-config="bucket=${TF_BACKEND_BUCKET}"
