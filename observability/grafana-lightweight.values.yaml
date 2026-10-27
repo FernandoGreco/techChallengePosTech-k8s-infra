@@ -1,0 +1,150 @@
+# k8s-monitoring 4.5.5. Sem tokens, senhas ou valores de autenticação.
+# O comando original deriva este nome do contexto kubernetes-admin@kubernetes.
+cluster:
+  name: kubernetes-admin-kubernetes
+
+collectorCommon:
+  alloy:
+    remoteConfig:
+      enabled: false
+
+destinations:
+  grafana-cloud-metrics:
+    type: prometheus
+    url: https://prometheus-prod-40-prod-sa-east-1.grafana.net/api/prom/push
+    auth:
+      type: basic
+      usernameKey: metrics-username
+      passwordKey: password
+    secret:
+      create: false
+      embed: false
+      name: grafana-cloud-credentials
+      namespace: grafana-monitoring
+  grafana-cloud-logs:
+    type: loki
+    url: https://logs-prod-024.grafana.net/loki/api/v1/push
+    auth:
+      type: basic
+      usernameKey: logs-username
+      passwordKey: password
+    secret:
+      create: false
+      embed: false
+      name: grafana-cloud-credentials
+      namespace: grafana-monitoring
+
+clusterMetrics:
+  enabled: true
+  collector: alloy-daemon
+  destinations: [grafana-cloud-metrics]
+
+hostMetrics:
+  enabled: true
+  collector: alloy-daemon
+  destinations: [grafana-cloud-metrics]
+  linuxHosts:
+    enabled: true
+
+podLogsViaLoki:
+  enabled: true
+  collector: alloy-daemon
+  destinations: [grafana-cloud-logs]
+
+clusterEvents:
+  enabled: true
+  collector: alloy-daemon
+  clustering: true
+  destinations: [grafana-cloud-logs]
+
+collectors:
+  alloy-daemon:
+    presets:
+      - small
+      - host-storage
+      - clustered
+      - filesystem-log-reader
+      - daemonset
+    rbac:
+      create: false
+    serviceAccount:
+      create: false
+      name: grafana-cloud-alloy-daemon
+    alloy:
+      # Leitura dos logs de host: root, mas sem modo privilegiado/capabilities.
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        privileged: false
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+          add: []
+      mounts:
+        dockercontainers: false
+    controller:
+      hostNetwork: false
+      hostPID: false
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+    configReloader:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 50m
+          memory: 64Mi
+
+telemetryServices:
+  node-exporter:
+    deploy: true
+    resources:
+      requests:
+        cpu: 20m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+  kube-state-metrics:
+    deploy: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  beyla:
+    deploy: false
+    k8sCache:
+      replicas: 0
+  kepler:
+    deploy: false
+  opencost:
+    deploy: false
+  sdkInjector:
+    deploy: false
+  windows-exporter:
+    deploy: false
+  k8s-manifest-tail:
+    deploy: false
+
+alloy-operator:
+  # Operador sem permissões de escrita de cluster; RBAC do coletor pré-criado.
+  ownNamespaceOnly: true
+  rbac:
+    createClusterRoles: false
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# Os três sinais são explícitos. Fleet desativado evita pipelines extras/duplicadas.
+selfReporting:
+  enabled: false

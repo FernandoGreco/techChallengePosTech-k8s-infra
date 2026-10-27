@@ -12,12 +12,32 @@ if [[ ! -f "$KUBECONFIG" ]]; then
   exit 1
 fi
 
-kubectl apply -f \
-  "https://github.com/kubernetes-sigs/metrics-server/releases/download/${METRICS_SERVER_VERSION}/components.yaml"
-
 # Em kubeadm, certificados de kubelet normalmente nao possuem CA valida para Metrics Server.
 # Somente para laboratorio: usar --kubelet-insecure-tls (nao recomendado para producao).
-kubectl -n kube-system patch deployment metrics-server --type=json -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+# Preparar o manifesto antes do apply evita dois rollouts e argumentos duplicados.
+METRICS_DIR="$(mktemp -d)"
+trap 'rm -f "$METRICS_DIR/components.yaml" "$METRICS_DIR/kustomization.yaml"; rmdir "$METRICS_DIR"' EXIT
+curl -fsSL --connect-timeout 10 --max-time 60 \
+  "https://github.com/kubernetes-sigs/metrics-server/releases/download/${METRICS_SERVER_VERSION}/components.yaml" \
+  -o "$METRICS_DIR/components.yaml"
+
+cat > "$METRICS_DIR/kustomization.yaml" <<'KUSTOMIZATION'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - components.yaml
+patches:
+  - target:
+      kind: Deployment
+      name: metrics-server
+      namespace: kube-system
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --kubelet-insecure-tls
+KUSTOMIZATION
+
+kubectl apply -k "$METRICS_DIR"
 
 echo "Aguardando inicializacao do Metrics Server..."
 

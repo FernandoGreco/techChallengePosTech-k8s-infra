@@ -2,23 +2,11 @@
 
 set -euo pipefail
 
-# Remover acesso SSH temporario do GitHub Actions
-RUNNER_SSH_RULE_ID=""
-
-cleanup_runner_ssh() {
-  if [[ -n "${RUNNER_SSH_RULE_ID:-}" && -n "${K8S_SECURITY_GROUP_ID:-}" ]]; then
-    echo "Removendo regra SSH temporaria: $RUNNER_SSH_RULE_ID"
-    aws ec2 revoke-security-group-ingress \
-      --region "${AWS_REGION:-us-east-1}" \
-      --group-id "$K8S_SECURITY_GROUP_ID" \
-      --security-group-rule-ids "$RUNNER_SSH_RULE_ID" || {
-        echo "ERRO: nao foi possivel remover a regra SSH temporaria." >&2
-        return 1
-      }
-  fi
-}
-
-trap cleanup_runner_ssh EXIT
+# CI usa plano salvo e Environment protegido; nao permitir o fluxo legado.
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  echo 'Use o workflow com validacao, plan e aprovacao de apply separados.' >&2
+  exit 1
+fi
 
 # Diretorio do ambiente Terraform
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -134,15 +122,7 @@ echo "========================================"
 echo " Confirmacao do deploy"
 echo "========================================"
 
-if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
-  if [[ "${AUTO_APPROVE_DEPLOY:-}" != "true" ]]; then
-    echo "ERRO: AUTO_APPROVE_DEPLOY=true e obrigatorio no GitHub Actions." >&2
-    exit 1
-  fi
-  CONFIRMATION="sim"
-else
-  read -r -p "Deseja aplicar este plano Terraform? (sim/nao): " CONFIRMATION
-fi
+read -r -p "Deseja aplicar este plano Terraform? (sim/nao): " CONFIRMATION
 
 if [[ "$CONFIRMATION" != "sim" ]]; then
   echo "Deploy cancelado. Nenhum recurso foi aplicado."
@@ -153,31 +133,6 @@ echo ""
 echo "Aplicando plano Terraform..."
 
 terraform apply -input=false tfplan
-
-# Autorizar temporariamente o IP do GitHub Actions
-if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
-  echo "Configurando acesso SSH temporario do GitHub Actions..."
-  K8S_SECURITY_GROUP_ID="$(terraform output -raw k8s_security_group_id)"
-  RUNNER_PUBLIC_IP="$(curl -fsS --max-time 15 https://checkip.amazonaws.com | tr -d "\r\n")"
-
-  if [[ ! "$RUNNER_PUBLIC_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    echo "ERRO: nao foi possivel identificar um IPv4 valido do runner."
-    exit 1
-  fi
-
-  RUNNER_SSH_RULE_ID="$(aws ec2 authorize-security-group-ingress \
-    --group-id "$K8S_SECURITY_GROUP_ID" \
-    --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_PUBLIC_IP}/32,Description=GitHub-Actions-Temporario}]" \
-    --query "SecurityGroupRules[0].SecurityGroupRuleId" \
-    --output text)"
-
-  if [[ ! "$RUNNER_SSH_RULE_ID" =~ ^sgr-[a-zA-Z0-9]+$ ]]; then
-    echo "ERRO: nao foi possivel identificar a regra SSH temporaria." >&2
-    exit 1
-  fi
-  echo "Acesso SSH temporario autorizado para o runner."
-fi
-
 
 echo ""
 echo "========================================"
@@ -370,7 +325,7 @@ else
     -o ConnectTimeout=10 \
     -o StrictHostKeyChecking=accept-new \
     "${SSH_USER}@${CONTROL_PLANE_PUBLIC_IP}" \
-    "sudo kubeadm token create --print-join-command" \
+    "sudo kubeadm token create --ttl=10m --print-join-command" \
     | ssh \
         -i "$SSH_PRIVATE_KEY_PATH" \
         -o BatchMode=yes \
@@ -411,6 +366,15 @@ if [[ "$WORKER_READY" != "true" ]]; then
   echo "ERRO: cluster nao atingiu dois nos Ready."
   exit 1
 fi
+
+echo "Aguardando Calico em todos os nos..."
+ssh \
+  -i "$SSH_PRIVATE_KEY_PATH" \
+  -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o StrictHostKeyChecking=accept-new \
+  "${SSH_USER}@${CONTROL_PLANE_PUBLIC_IP}" \
+  "kubectl -n kube-system rollout status daemonset/calico-node --timeout=300s"
 
 echo ""
 echo "========================================"
@@ -457,6 +421,6 @@ echo ""
 echo "========================================"
 echo " Kubernetes provisionado e validado!"
 echo "========================================"
-# Executar validacao adicional enquanto o acesso SSH temporario ainda esta aberto.
+# Validacao adicional usando a conectividade SSH existente.
 echo "Executando validacao final independente..."
 bash "${SCRIPT_DIR}/validate-k8s.sh"
