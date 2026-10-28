@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizePlan } from '../scripts/terraform-plan-summary.mjs';
 import { seal, unseal } from '../scripts/plan-artifact.mjs';
-import { checkRequest, checkEnvironment } from '../scripts/require-apply-approval.mjs';
+import { resolveRequest, checkRequest, checkEnvironment } from '../scripts/require-apply-approval.mjs';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, existsSync, unlinkSync, rmdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, unlinkSync, rmdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -12,11 +12,80 @@ test('reject deletions and both replacement orderings without emitting attribute
   for (const actions of [['delete'], ['delete', 'create'], ['create', 'delete']]) {
     const result = summarizePlan({ resource_changes: [{ change: { actions, after: { password: 'synthetic-secret' } } }] });
     assert.equal(result.destructive, true);
+    assert.equal(result.blocked, true);
     assert.ok(!JSON.stringify(result).includes('synthetic-secret'));
   }
   assert.equal(summarizePlan({ resource_changes: [{ change: { actions: ['update'] } }] }).destructive, false);
   assert.throws(() => summarizePlan({ resource_changes: [{ change: { actions: ['future-action'] } }] }));
 });
+test('EC2 user-data updates are blocked in place without exposing their contents', () => {
+  for (const name of ['control_plane', 'worker']) {
+    for (const field of ['user_data', 'user_data_base64']) {
+      const plan = { resource_changes: [{ type: 'aws_instance', mode: 'managed',
+        address: `module.ec2.aws_instance.${name}`,
+        change: { actions: ['update'], before: { [field]: 'synthetic-old-bootstrap-private' },
+          after: { [field]: 'synthetic-new-bootstrap-private' } } }] };
+      const result = summarizePlan(plan);
+      assert.equal(result.update, 1);
+      assert.equal(result.destructive, false);
+      assert.equal(result.blocked, true);
+      assert.equal(result.blocked_user_data_updates, 1);
+      assert.deepEqual(result.resources[0].changed_fields, [field]);
+      assert.ok(!JSON.stringify(result).includes('synthetic-old-bootstrap-private'));
+      assert.ok(!JSON.stringify(result).includes('synthetic-new-bootstrap-private'));
+    }
+  }
+});
+
+test('unknown or removed EC2 user-data cannot bypass the update guard', () => {
+  for (const field of ['user_data', 'user_data_base64']) {
+    for (const change of [
+      { before: { [field]: 'synthetic-bootstrap' }, after: { [field]: null } },
+      { before: { [field]: null }, after: {}, after_unknown: { [field]: true } },
+    ]) {
+      const result = summarizePlan({ resource_changes: [{ type: 'aws_instance',
+        change: { actions: ['update'], ...change } }] });
+      assert.equal(result.blocked, true);
+      assert.equal(result.blocked_user_data_updates, 1);
+      assert.ok(result.resources[0].changed_fields.includes(field));
+    }
+  }
+});
+
+test('initial EC2 creation, no-op and tag-only updates remain allowed', () => {
+  for (const change of [
+    { actions: ['create'], before: null, after: { user_data: 'synthetic-bootstrap' } },
+    { actions: ['no-op'], before: { user_data: 'same' }, after: { user_data: 'same' } },
+    { actions: ['update'], before: { user_data: 'same', tags: { Role: 'old' } },
+      after: { user_data: 'same', tags: { Role: 'new' } }, after_unknown: { public_ip: true } },
+  ]) {
+    const result = summarizePlan({ resource_changes: [{ type: 'aws_instance', change }] });
+    assert.equal(result.blocked, false);
+    assert.equal(result.blocked_user_data_updates, 0);
+  }
+});
+
+test('summary CLI exits nonzero for EC2 user-data updates and zero for tag-only updates', () => {
+  for (const change of [
+    { actions: ['update'], before: { user_data: 'synthetic-old-private' }, after: { user_data: 'synthetic-new-private' } },
+    { actions: ['update'], before: { user_data: null }, after: {}, after_unknown: { user_data: true } },
+  ]) {
+    const result = spawnSync(process.execPath, ['scripts/terraform-plan-summary.mjs'], {
+      encoding: 'utf8', input: JSON.stringify({ resource_changes: [{ type: 'aws_instance', change }] }),
+    });
+    assert.equal(result.status, 2);
+    assert.equal(JSON.parse(result.stdout).blocked_user_data_updates, 1);
+    assert.ok(!result.stdout.includes('synthetic-old-private'));
+    assert.ok(!result.stdout.includes('synthetic-new-private'));
+  }
+  const safe = spawnSync(process.execPath, ['scripts/terraform-plan-summary.mjs'], {
+    encoding: 'utf8', input: JSON.stringify({ resource_changes: [{ type: 'aws_instance',
+      change: { actions: ['update'], before: { tags: { Name: 'old' } }, after: { tags: { Name: 'new' } } } }] }),
+  });
+  assert.equal(safe.status, 0);
+  assert.equal(JSON.parse(safe.stdout).blocked, false);
+});
+
 test('artifact rejects tampering, wrong key, expired plan and wrong commit/run/account/region', () => {
   const key = 'synthetic-test-key-with-more-than-32-characters';
   const context = { commit: 'abc', run: '123', account: '000000000000', region: 'test-region' };
@@ -30,16 +99,84 @@ test('artifact rejects tampering, wrong key, expired plan and wrong commit/run/a
   for (const field of Object.keys(context)) assert.throws(() => unseal(encrypted, key, { ...context, [field]: 'other' }));
   assert.throws(() => unseal(encrypted, key, context, Date.now() + 5 * 60 * 60 * 1000));
 });
-test('apply rejects push, other branches, absent confirmation and unprotected Environment', () => {
-  const request = { GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: 'refs/heads/homolog', APPLY_CONFIRMATION: 'APLICAR HOMOLOG' };
+const requestBase = {
+  GITHUB_REPOSITORY: 'felipevrds/techChallengePosTech-k8s-infra',
+  GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: 'refs/heads/homolog',
+};
+
+test('homolog push requests plan and approval; other repositories, refs and events fail closed', () => {
+  const push = { ...requestBase, GITHUB_EVENT_NAME: 'push' };
+  assert.deepEqual(resolveRequest(push), { plan: true, apply: true });
+  assert.doesNotThrow(() => checkRequest(push));
+  for (const override of [
+    { GITHUB_REF: 'refs/heads/main' }, { GITHUB_REF: 'refs/heads/feature/test' },
+    { GITHUB_REF: 'refs/tags/homolog' }, { PUSH_DELETED: 'true' },
+    { GITHUB_REPOSITORY: 'FernandoGreco/techChallengePosTech-k8s-infra' },
+    { GITHUB_REPOSITORY: '' }, { GITHUB_EVENT_NAME: 'pull_request' },
+    { GITHUB_EVENT_NAME: 'workflow_run' }, { GITHUB_EVENT_NAME: 'repository_dispatch' },
+  ]) assert.throws(() => resolveRequest({ ...push, ...override }));
+});
+
+test('manual validation and plan never request apply; manual apply still requires explicit confirmation', () => {
+  for (const action of ['', 'validate']) {
+    const env = { ...requestBase, REQUESTED_ACTION: action, APPLY_CONFIRMATION: 'APLICAR HOMOLOG' };
+    assert.deepEqual(resolveRequest(env), { plan: false, apply: false });
+    assert.throws(() => checkRequest(env));
+  }
+  const plan = { ...requestBase, REQUESTED_ACTION: 'plan', APPLY_CONFIRMATION: 'APLICAR HOMOLOG' };
+  assert.deepEqual(resolveRequest(plan), { plan: true, apply: false });
+  assert.throws(() => checkRequest(plan));
+  const request = { ...requestBase, REQUESTED_ACTION: 'apply', APPLY_CONFIRMATION: 'APLICAR HOMOLOG' };
   assert.doesNotThrow(() => checkRequest(request));
-  for (const override of [{ GITHUB_EVENT_NAME: 'push' }, { GITHUB_REF: 'refs/heads/main' }, { APPLY_CONFIRMATION: '' }]) assert.throws(() => checkRequest({ ...request, ...override }));
+  for (const override of [
+    { GITHUB_REF: 'refs/heads/main' }, { APPLY_CONFIRMATION: '' },
+    { APPLY_CONFIRMATION: 'aplicar homolog' }, { REQUESTED_ACTION: 'destroy' },
+  ]) assert.throws(() => checkRequest({ ...request, ...override }));
+  assert.throws(() => resolveRequest({ ...plan, GITHUB_REF: 'refs/heads/main' }));
+});
+
+test('apply rejects missing reviewers, administrative bypass and any branch policy except homolog', () => {
   const environment = { can_admins_bypass: false, protection_rules: [{ type: 'required_reviewers', reviewers: [{}] }], deployment_branch_policy: { custom_branch_policies: true } };
   const policy = [{ name: 'homolog', type: 'branch' }];
   assert.doesNotThrow(() => checkEnvironment(environment, policy));
   assert.throws(() => checkEnvironment({ ...environment, protection_rules: [] }, policy));
   assert.throws(() => checkEnvironment({ ...environment, can_admins_bypass: true }, policy));
   assert.throws(() => checkEnvironment(environment, [{ name: '*', type: 'branch' }]));
+  assert.throws(() => checkEnvironment({ ...environment, protection_rules: [{ type: 'required_reviewers', reviewers: [] }] }, policy));
+  assert.throws(() => checkEnvironment(environment, [...policy, { name: 'main', type: 'branch' }]));
+  assert.throws(() => checkEnvironment(environment, [{ name: 'homolog', type: 'tag' }]));
+});
+
+test('request CLI emits routing outputs without contacting AWS or the Environment API', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tc3-request-'));
+  const output = join(dir, 'outputs');
+  try {
+    for (const [event, action, confirmation, expected] of [
+      ['push', '', '', 'plan=true\napply=true\n'],
+      ['workflow_dispatch', 'validate', '', 'plan=false\napply=false\n'],
+      ['workflow_dispatch', 'plan', '', 'plan=true\napply=false\n'],
+      ['workflow_dispatch', 'apply', 'APLICAR HOMOLOG', 'plan=true\napply=true\n'],
+    ]) {
+      writeFileSync(output, '');
+      const result = spawnSync(process.execPath, ['scripts/require-apply-approval.mjs', 'request'], {
+        encoding: 'utf8', env: { ...process.env, ...requestBase, GITHUB_EVENT_NAME: event,
+          REQUESTED_ACTION: action, APPLY_CONFIRMATION: confirmation, PUSH_DELETED: 'false',
+          GITHUB_OUTPUT: output, GH_TOKEN: '', HTTPS_PROXY: 'http://127.0.0.1:1' },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(readFileSync(output, 'utf8'), expected);
+    }
+    writeFileSync(output, '');
+    const rejected = spawnSync(process.execPath, ['scripts/require-apply-approval.mjs', 'request'], {
+      encoding: 'utf8', env: { ...process.env, ...requestBase, REQUESTED_ACTION: 'apply',
+        APPLY_CONFIRMATION: '', GITHUB_OUTPUT: output, GH_TOKEN: '' },
+    });
+    assert.equal(rejected.status, 1);
+    assert.equal(readFileSync(output, 'utf8'), '');
+  } finally {
+    if (existsSync(output)) unlinkSync(output);
+    rmdirSync(dir);
+  }
 });
 test('legacy deploy refuses GitHub Actions before invoking AWS or Terraform', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tc3-no-deploy-'));
