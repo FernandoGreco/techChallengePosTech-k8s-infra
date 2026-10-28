@@ -13,6 +13,10 @@ resource "aws_instance" "control_plane" {
     install_metrics    = file("${path.module}/user-data/install-metrics.sh")
   })
 
+  lifecycle {
+    ignore_changes = [user_data]
+  }
+
   root_block_device {
     volume_size = 20
     volume_type = "gp3"
@@ -36,6 +40,10 @@ resource "aws_instance" "worker" {
   user_data = templatefile("${path.module}/user-data/worker.sh.tftpl", {
     install_k8s = file("${path.module}/user-data/install-k8s.sh")
   })
+
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 
   root_block_device {
     volume_size = 20
