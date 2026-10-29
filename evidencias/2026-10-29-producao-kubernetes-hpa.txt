@@ -1,0 +1,137 @@
+FIAP TC3 - Kubernetes de producao - coleta real de 29/10/2026 (UTC)
+Conta AWS 207975764067; regiao us-east-1; perfil default.
+Extratos de consultas SSH com host keys verificadas no console AWS.
+Enderecos numericos omitidos. Sem tokens, certificados privados, state ou kubeconfig.
+
+=== BOOTSTRAP VERSIONADO REEXECUTADO ===
+{"workerJoin":"already-registered"}
+{"result":"PASS","environment":"production","readyNodes":2,"secureMetrics":true,"terraformExecuted":false,"awsResourcesModified":false}
+
+=== METRICS SERVER E TLS - 2026-10-29T15:12:44.064Z ===
+NAME              STATUS   ROLES           AGE    VERSION    INTERNAL-IP    EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION   CONTAINER-RUNTIME
+ip-172-31-80-64   Ready    control-plane   128m   v1.34.13   [IP omitido]   <none>        Ubuntu 24.04.5 LTS   7.0.0-1014-aws   containerd://2.2.1
+ip-172-31-91-84   Ready    <none>          28m    v1.34.13   [IP omitido]   <none>        Ubuntu 24.04.5 LTS   7.0.0-1014-aws   containerd://2.2.1
+NAME             READY   UP-TO-DATE   AVAILABLE   AGE
+metrics-server   1/1     1            1           4m1s
+NAME                     SERVICE                      AVAILABLE   AGE
+v1beta1.metrics.k8s.io   kube-system/metrics-server   True        4m1s
+NAME              CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+ip-172-31-80-64   267m         13%      1030Mi          27%
+ip-172-31-91-84   142m         7%       541Mi           14%
+
+["--cert-dir=/tmp","--secure-port=10250","--kubelet-use-node-status-port","--metric-resolution=15s","--kubelet-preferred-address-types=InternalIP,Hostname","--kubelet-certificate-authority=/etc/kubelet-ca/ca.crt","--tls-cert-file=/etc/serving-tls/tls.crt","--tls-private-key-file=/etc/serving-tls/tls.key"]
+APIService insecureSkipTLSVerify nao e true; caBundle presente.
+Kubelet CA configurada, sem --kubelet-insecure-tls; certificado de servico configurado.
+Certificados de ambos os kubelets validados com openssl verify -purpose sslserver -verify_ip.
+
+=== HPA SINTETICO DE PRODUCAO - SAIDA REAL ===
+Namespace production-hpa-lab; CPU alvo 50%; min=1 max=2.
+Gerador separado: 4 clientes, 120 s, deadline 150 s, CPU limitada a 100m e memoria 64Mi.
+Linhas repetidas "wget: download timed out" omitidas; contadores originais mantidos.
+2026-10-29T15:44:23Z
+namespace/production-hpa-lab unchanged
+service/cpu-demo unchanged
+deployment.apps/cpu-demo unchanged
+horizontalpodautoscaler.autoscaling/cpu-demo unchanged
+HPA_STAGE=baseline
+NAME                                           REFERENCE             TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/cpu-demo   Deployment/cpu-demo   cpu: 1%/50%   1         2         1          14m
+
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/cpu-demo   1/1     1            1           14m
+
+NAME                            READY   STATUS    RESTARTS   AGE
+pod/cpu-demo-7567c4fc5d-vtnzz   1/1     Running   0          14m
+job.batch/hpa-load-bounded created
+HPA_STAGE=scale-up
+NAME                                           REFERENCE             TARGETS        MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/cpu-demo   Deployment/cpu-demo   cpu: 57%/50%   1         2         1          14m
+
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/cpu-demo   2/2     2            2           14m
+
+NAME                            READY   STATUS    RESTARTS   AGE
+pod/cpu-demo-7567c4fc5d-6rdmt   1/1     Running   0          1s
+pod/cpu-demo-7567c4fc5d-vtnzz   1/1     Running   0          14m
+pod/hpa-load-bounded-ccgwg      1/1     Running   0          16s
+NAME                        CPU(cores)   MEMORY(bytes)
+cpu-demo-7567c4fc5d-vtnzz   57m          16Mi
+
+worker=2 completed=54 failed=37
+worker=3 completed=56 failed=32
+worker=1 completed=55 failed=34
+worker=4 completed=69 failed=29
+job.batch "hpa-load-bounded" deleted from production-hpa-lab namespace
+HPA_STAGE=scale-down
+NAME                                           REFERENCE             TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/cpu-demo   Deployment/cpu-demo   cpu: 1%/50%   1         2         2          17m
+
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/cpu-demo   1/1     1            1           17m
+
+NAME                            READY   STATUS    RESTARTS   AGE
+pod/cpu-demo-7567c4fc5d-vtnzz   1/1     Running   0          17m
+LAST SEEN   TYPE     REASON              OBJECT                             MESSAGE
+2m46s       Normal   SuccessfulRescale   horizontalpodautoscaler/cpu-demo   New size: 2; reason: cpu resource utilization (percentage of request) above target
+1s          Normal   SuccessfulRescale   horizontalpodautoscaler/cpu-demo   New size: 1; reason: All metrics below target
+2026-10-29T15:47:25Z
+HPA_RESULT=PASS scale=1-2-1 load-job-removed=true
+{"checkedAt":"2026-10-29T15:47:25.949Z","hpaTestExit":0,"resourcesScopedTo":"production-hpa-lab"}
+
+
+Contadores somados: completed=234 failed=132.
+Falhas HTTP nao foram zeradas ou atribuidas a outro teste. Nao e benchmark da aplicacao.
+Coluna REPLICAS do HPA pode atrasar a atualizacao do Deployment; os eventos e a coleta final confirmam 1-2-1.
+
+=== ESTADO FINAL PRODUCAO - 2026-10-29T15:52:03.493Z ===
+2026-10-29T15:52:02Z
+NAME              STATUS   ROLES           AGE    VERSION    INTERNAL-IP    EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION   CONTAINER-RUNTIME
+ip-172-31-80-64   Ready    control-plane   167m   v1.34.13   [IP omitido]   <none>        Ubuntu 24.04.5 LTS   7.0.0-1014-aws   containerd://2.2.1
+ip-172-31-91-84   Ready    <none>          67m    v1.34.13   [IP omitido]   <none>        Ubuntu 24.04.5 LTS   7.0.0-1014-aws   containerd://2.2.1
+NAME          DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR            AGE
+calico-node   2         2         2       2            2           kubernetes.io/os=linux   167m
+NAME             READY   UP-TO-DATE   AVAILABLE   AGE
+metrics-server   1/1     1            1           43m
+NAME                     SERVICE                      AVAILABLE   AGE
+v1beta1.metrics.k8s.io   kube-system/metrics-server   True        43m
+NAME              CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+ip-172-31-80-64   144m         7%       1054Mi          28%
+ip-172-31-91-84   56m          2%       573Mi           15%
+NAME                                           REFERENCE             TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/cpu-demo   Deployment/cpu-demo   cpu: 1%/50%   1         2         1          21m
+
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/cpu-demo   1/1     1            1           21m
+
+NAME                            READY   STATUS    RESTARTS   AGE
+pod/cpu-demo-7567c4fc5d-vtnzz   1/1     Running   0          21m
+LAST SEEN   TYPE     REASON              OBJECT                             MESSAGE
+7m24s       Normal   SuccessfulRescale   horizontalpodautoscaler/cpu-demo   New size: 2; reason: cpu resource utilization (percentage of request) above target
+4m39s       Normal   SuccessfulRescale   horizontalpodautoscaler/cpu-demo   New size: 1; reason: All metrics below target
+issuer=CN = kubernetes
+notAfter=Oct 29 15:08:41 2027 GMT
+
+get jobs: No resources found in production-hpa-lab namespace.
+
+=== PRESERVACAO HOMOLOG - 2026-10-29T15:48:24.394Z ===
+NAME               STATUS   ROLES           AGE     VERSION    INTERNAL-IP     EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION   CONTAINER-RUNTIME
+ip-172-31-87-121   Ready    control-plane   2d15h   v1.34.12   [IP omitido]   <none>        Ubuntu 24.04.5 LTS   7.0.0-1014-aws   containerd://2.2.1
+ip-172-31-88-192   Ready    <none>          2d4h    v1.34.12   [IP omitido]   <none>        Ubuntu 24.04.5 LTS   7.0.0-1014-aws   containerd://2.2.1
+NAME          DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR            AGE
+calico-node   2         2         2       2            2           kubernetes.io/os=linux   2d15h
+NAME                     SERVICE                      AVAILABLE   AGE
+v1beta1.metrics.k8s.io   kube-system/metrics-server   True        2d15h
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/oficina-api     1/1     1            1           39h
+deployment.apps/postgres-demo   1/1     1            1           40h
+
+NAME                               READY   STATUS      RESTARTS       AGE
+pod/oficina-api-59ffff546c-l7r2h   1/1     Running     2 (6h7m ago)   21h
+pod/oficina-schema-demo-v3-v426h   0/1     Completed   0              39h
+pod/postgres-demo-b874bc57-glmvt   1/1     Running     5 (6h7m ago)   40h
+NAMESPACE     NAME          REFERENCE                TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+hpa-lab       cpu-demo      Deployment/cpu-demo      cpu: 1%/50%   1         4         1          2d4h
+oficina-tc3   oficina-api   Deployment/oficina-api   cpu: 6%/70%   1         2         1          39h
+
+State homolog (somente HeadObject): {"lastModified":"2026-10-28T17:29:16+00:00","bytes":38033,"encryption":"AES256"}
+Nenhum comando de escrita foi executado em homologacao. Nenhum Terraform foi executado nesta etapa.

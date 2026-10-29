@@ -19,6 +19,13 @@ variable "instance_type" {
   default = "t3.medium"
 }
 
+variable "root_volume_encrypted" {
+  description = "Criptografia dos novos volumes raiz; null preserva o comportamento dos consumidores existentes"
+  type        = bool
+  default     = null
+  nullable    = true
+}
+
 variable "ami_id" {
   type = string
 }

@@ -1,0 +1,20 @@
+# Modelo de TFVARS_PRODUCTION com referencias da conta AWS Academy 207975764067.
+# Revalidar VPC, subnets e Key Pair na conta e regiao antes de utilizar.
+# Em outra conta, substituir todas as referencias abaixo.
+# O CIDR permanece pendente: este exemplo nao esta pronto para executar Plan.
+# Backend separado: production/terraform.tfstate; bucket configurado fora de tfvars.
+
+aws_region = "us-east-1"
+
+vpc_id = "vpc-0e0d8de1a7e61f569"
+
+# As duas EC2 usam a primeira subnet; todas as subnets informadas sao consultadas.
+subnet_ids = [
+  "subnet-02c3967fa24337613",
+  "subnet-0e9aaab5202513ffa"
+]
+
+ssh_key_name = "vockey"
+
+# Substituir pelo IP publico atual autorizado. Nao reutilizar o CIDR historico.
+ssh_allowed_cidr = "<CONFIRMAR_IP_PUBLICO_ATUAL>/32"

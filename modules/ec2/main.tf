@@ -10,11 +10,17 @@ resource "aws_instance" "control_plane" {
     install_k8s        = file("${path.module}/user-data/install-k8s.sh")
     init_control_plane = file("${path.module}/user-data/init-control-plane.sh")
     install_cni        = file("${path.module}/user-data/install-cni.sh")
+    install_metrics    = file("${path.module}/user-data/install-metrics.sh")
   })
+
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 
   root_block_device {
     volume_size = 20
     volume_type = "gp3"
+    encrypted   = var.root_volume_encrypted
   }
 
   tags = {
@@ -36,9 +42,14 @@ resource "aws_instance" "worker" {
     install_k8s = file("${path.module}/user-data/install-k8s.sh")
   })
 
+  lifecycle {
+    ignore_changes = [user_data]
+  }
+
   root_block_device {
     volume_size = 20
     volume_type = "gp3"
+    encrypted   = var.root_volume_encrypted
   }
 
   tags = {

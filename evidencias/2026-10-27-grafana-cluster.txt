@@ -1,0 +1,32 @@
+Tue Oct 27 12:59:46 UTC 2026
+NAME               STATUS   ROLES           AGE   VERSION    INTERNAL-IP     EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION   CONTAINER-RUNTIME
+ip-172-31-87-121   Ready    control-plane   12h   v1.34.12   172.31.87.121   <none>        Ubuntu 24.04.5 LTS   7.0.0-1014-aws   containerd://2.2.1
+ip-172-31-88-192   Ready    <none>          79m   v1.34.12   172.31.88.192   <none>        Ubuntu 24.04.5 LTS   7.0.0-1014-aws   containerd://2.2.1
+NAME                                                READY   STATUS    RESTARTS   AGE   IP               NODE               NOMINATED NODE   READINESS GATES
+grafana-cloud-alloy-daemon-h67mq                    2/2     Running   0          14m   192.168.132.7    ip-172-31-87-121   <none>           <none>
+grafana-cloud-alloy-daemon-pbzzk                    2/2     Running   0          14m   192.168.45.138   ip-172-31-88-192   <none>           <none>
+grafana-cloud-alloy-operator-b65574cb-ftd25         1/1     Running   0          14m   192.168.45.137   ip-172-31-88-192   <none>           <none>
+grafana-cloud-kube-state-metrics-555d445446-lw6pr   1/1     Running   0          14m   192.168.45.136   ip-172-31-88-192   <none>           <none>
+grafana-cloud-node-exporter-mhrv8                   1/1     Running   0          14m   172.31.87.121    ip-172-31-87-121   <none>           <none>
+grafana-cloud-node-exporter-rtjk8                   1/1     Running   0          14m   172.31.88.192    ip-172-31-88-192   <none>           <none>
+POD                                                 NAME                 CPU(cores)   MEMORY(bytes)
+grafana-cloud-alloy-daemon-h67mq                    alloy                14m          82Mi
+grafana-cloud-alloy-daemon-h67mq                    config-reloader      0m           6Mi
+grafana-cloud-alloy-daemon-pbzzk                    alloy                11m          102Mi
+grafana-cloud-alloy-daemon-pbzzk                    config-reloader      1m           8Mi
+grafana-cloud-alloy-operator-b65574cb-ftd25         alloy-operator       1m           39Mi
+grafana-cloud-kube-state-metrics-555d445446-lw6pr   kube-state-metrics   2m           16Mi
+grafana-cloud-node-exporter-mhrv8                   node-exporter        1m           7Mi
+grafana-cloud-node-exporter-rtjk8                   node-exporter        2m           8Mi
+NAME               CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+ip-172-31-87-121   177m         8%       1673Mi          44%
+ip-172-31-88-192   72m          3%       871Mi           23%
+NAME                                               READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/grafana-cloud-alloy-operator       1/1     1            1           14m
+deployment.apps/grafana-cloud-kube-state-metrics   1/1     1            1           14m
+
+NAME                                         DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR            AGE
+daemonset.apps/grafana-cloud-alloy-daemon    2         2         2       2            2           kubernetes.io/os=linux   14m
+daemonset.apps/grafana-cloud-node-exporter   2         2         2       2            2           kubernetes.io/os=linux   14m
+NAME                     SERVICE                      AVAILABLE   AGE
+v1beta1.metrics.k8s.io   kube-system/metrics-server   True        12h

@@ -2,6 +2,12 @@
 
 set -euo pipefail
 
+# CI usa plano salvo e Environment protegido; nao permitir o fluxo legado.
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  echo 'Use o workflow com validacao, plan e aprovacao de apply separados.' >&2
+  exit 1
+fi
+
 # Diretorio do ambiente Terraform
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TERRAFORM_DIR="${SCRIPT_DIR}/../environments/homolog"
@@ -72,21 +78,6 @@ SSH_USER="${SSH_USER:-ubuntu}"
 echo "Chave SSH encontrada."
 echo "Usuario SSH: $SSH_USER"
 
-# Isolar os dados e o estado Terraform por conta AWS
-TERRAFORM_STATE_ROOT="${TERRAFORM_STATE_ROOT:-${SCRIPT_DIR}/../.terraform-accounts}"
-TERRAFORM_WORK_DIR="${TERRAFORM_STATE_ROOT}/${CURRENT_AWS_ACCOUNT_ID}"
-
-mkdir -p "$TERRAFORM_WORK_DIR"
-
-export TF_DATA_DIR="${TERRAFORM_WORK_DIR}/data"
-
-# Caminho do estado Terraform, separado por conta AWS
-TERRAFORM_STATE_PATH="${TERRAFORM_WORK_DIR}/terraform.tfstate"
-
-# No Git Bash do Windows, converter para um caminho compativel
-if command -v cygpath >/dev/null 2>&1; then
-  TERRAFORM_STATE_PATH="$(cygpath -m "$TERRAFORM_STATE_PATH")"
-fi
 
 echo ""
 echo "========================================"
@@ -95,8 +86,7 @@ echo "========================================"
 
 cd "$TERRAFORM_DIR"
 
-terraform init -reconfigure -input=false \
-  -backend-config="path=${TERRAFORM_STATE_PATH}"
+source "${SCRIPT_DIR}/backend.sh"
 
 echo ""
 echo "========================================"
@@ -335,7 +325,7 @@ else
     -o ConnectTimeout=10 \
     -o StrictHostKeyChecking=accept-new \
     "${SSH_USER}@${CONTROL_PLANE_PUBLIC_IP}" \
-    "sudo kubeadm token create --print-join-command" \
+    "sudo kubeadm token create --ttl=10m --print-join-command" \
     | ssh \
         -i "$SSH_PRIVATE_KEY_PATH" \
         -o BatchMode=yes \
@@ -377,6 +367,30 @@ if [[ "$WORKER_READY" != "true" ]]; then
   exit 1
 fi
 
+echo "Aguardando Calico em todos os nos..."
+ssh \
+  -i "$SSH_PRIVATE_KEY_PATH" \
+  -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o StrictHostKeyChecking=accept-new \
+  "${SSH_USER}@${CONTROL_PLANE_PUBLIC_IP}" \
+  "kubectl -n kube-system rollout status daemonset/calico-node --timeout=300s"
+
+echo ""
+echo "========================================"
+echo " Instalando Metrics Server"
+echo "========================================"
+
+ssh \
+  -i "$SSH_PRIVATE_KEY_PATH" \
+  -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o StrictHostKeyChecking=accept-new \
+  "${SSH_USER}@${CONTROL_PLANE_PUBLIC_IP}" \
+  "sudo bash /tmp/install-metrics.sh"
+
+echo "Metrics Server instalado e API de metricas validada!"
+
 echo ""
 echo "========================================"
 echo " Estado final dos nos Kubernetes"
@@ -407,3 +421,6 @@ echo ""
 echo "========================================"
 echo " Kubernetes provisionado e validado!"
 echo "========================================"
+# Validacao adicional usando a conectividade SSH existente.
+echo "Executando validacao final independente..."
+bash "${SCRIPT_DIR}/validate-k8s.sh"
