@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hpa-load-bounded
+  namespace: production-hpa-lab
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 150
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: load
+          image: busybox:1.36
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          command:
+            - sh
+            - -c
+            - |
+              end=$(( $(date +%s) + 120 ))
+              for worker in 1 2 3 4; do
+                (
+                  ok=0; failed=0
+                  while [ "$(date +%s)" -lt "$end" ]; do
+                    if wget -T 2 -q -O /dev/null http://cpu-demo.production-hpa-lab.svc.cluster.local; then
+                      ok=$((ok + 1))
+                    else
+                      failed=$((failed + 1))
+                    fi
+                  done
+                  echo "worker=$worker completed=$ok failed=$failed"
+                ) &
+              done
+              wait

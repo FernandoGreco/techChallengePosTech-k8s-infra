@@ -3,6 +3,20 @@ set -euo pipefail
 
 export KUBECONFIG=/etc/kubernetes/admin.conf
 
+# Production uses the same pinned release with CA verification on both TLS hops.
+# The helper is supplied by scripts/bootstrap-production.mjs after verified join.
+if [[ "${METRICS_TLS_MODE:-lab}" == "secure" ]]; then
+  : "${METRICS_TLS_HELPER:?Provide the reviewed kubelet-serving-tls.py helper}"
+  python3 "$METRICS_TLS_HELPER" install-metrics
+  kubectl -n kube-system rollout status deployment/metrics-server --timeout=180s
+  kubectl wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=120s
+  exit 0
+fi
+if [[ "${DEPLOY_ENVIRONMENT:-homolog}" == "production" ]]; then
+  echo 'Production requires METRICS_TLS_MODE=secure; insecure TLS is refused.' >&2
+  exit 1
+fi
+
 METRICS_SERVER_VERSION="v0.8.0"
 
 echo "Instalando Metrics Server ${METRICS_SERVER_VERSION}..."

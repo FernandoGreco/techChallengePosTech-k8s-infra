@@ -1,5 +1,15 @@
 # Evidência de CI/CD da infraestrutura
 
+> Registro histórico do catálogo anterior ao fechamento de 29/10/2026.
+> As limitações de fontes descritas abaixo se referem àquele catálogo.
+> A consulta atual recuperou o Apply de homologação no
+> [run 40729596822](https://github.com/felipevrds/techChallengePosTech-k8s-infra/actions/runs/40729596822)
+> e confirmou o Apply de produção no
+> [run 40876235431](https://github.com/felipevrds/techChallengePosTech-k8s-infra/actions/runs/40876235431).
+> Consulte [CI/CD e checklist atualizados](../docs/CI-CD.md),
+> [homologação](../docs/EVIDENCIAS-HOMOLOG.md) e
+> [produção](../docs/EVIDENCIAS-PRODUCAO.md) para os resultados comprovados.
+
 ## Escopo e fontes
 
 Este registro consolida resultados já documentados. As URLs abaixo identificam

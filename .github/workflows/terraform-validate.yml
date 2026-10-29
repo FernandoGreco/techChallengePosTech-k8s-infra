@@ -57,11 +57,14 @@ jobs:
             if ($parseErrors.Count) { throw "PowerShell syntax failed: $($file.Name)" }
           }
       - name: Test plan encryption and approval guards without AWS
-        run: node --test tests/cicd-guards.test.mjs
+        run: |
+          node --test tests/cicd-guards.test.mjs tests/kubernetes-bootstrap.test.mjs
+          python3 -c "import ast,pathlib; ast.parse(pathlib.Path('scripts/kubelet-serving-tls.py').read_text())"
+          python3 tests/kubelet_serving_tls_test.py
       - name: Validate GitHub Actions
         run: actionlint -shellcheck=
       - name: Validate Kubernetes manifests
-        run: kubeconform -strict -summary -kubernetes-version 1.34.0 tests/hpa-lab.yaml observability/grafana-rbac.yaml observability/smoke-test.yaml
+        run: kubeconform -strict -summary -kubernetes-version 1.34.0 tests/hpa-lab.yaml tests/production-hpa/load-job.yaml observability/grafana-rbac.yaml observability/smoke-test.yaml
       - name: Validate monitoring values and rendered manifests without credentials
         run: |
           set -euo pipefail
