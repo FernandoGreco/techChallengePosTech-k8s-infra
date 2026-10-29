@@ -19,7 +19,7 @@ export function unseal(encrypted, passphrase, expected, now = Date.now()) {
   decipher.setAAD(magic);
   decipher.setAuthTag(encrypted.subarray(36, 52));
   const payload = JSON.parse(Buffer.concat([decipher.update(encrypted.subarray(52)), decipher.final()]).toString());
-  for (const key of ['commit', 'run', 'account', 'region']) {
+  for (const key of ['commit', 'run', 'account', 'region', 'repository', 'environment', 'bucket', 'stateKey', 'attempt']) {
     if (!expected[key] || payload[key] !== expected[key]) throw new Error('Artifact context mismatch');
   }
   if (!Number.isFinite(payload.created) || now < payload.created || now - payload.created > 4 * 60 * 60 * 1000) throw new Error('Plan expired; generate a new plan');
@@ -30,7 +30,11 @@ export function unseal(encrypted, passphrase, expected, now = Date.now()) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const [mode, input, output] = process.argv.slice(2);
-    const context = { commit: process.env.GITHUB_SHA, run: process.env.GITHUB_RUN_ID, account: process.env.EXPECTED_AWS_ACCOUNT_ID, region: process.env.AWS_REGION };
+    const context = { commit: process.env.GITHUB_SHA, run: process.env.GITHUB_RUN_ID,
+      account: process.env.EXPECTED_AWS_ACCOUNT_ID, region: process.env.AWS_REGION,
+      repository: process.env.GITHUB_REPOSITORY, environment: process.env.DEPLOY_ENVIRONMENT,
+      bucket: process.env.TF_BACKEND_BUCKET, stateKey: process.env.TF_STATE_KEY,
+      attempt: process.env.GITHUB_RUN_ATTEMPT };
     if (Object.values(context).some(v => !v)) throw new Error('Missing context');
     const data = readFileSync(input);
     const result = mode === 'encrypt' ? seal(data, process.env.TF_PLAN_ENCRYPTION_KEY, context)

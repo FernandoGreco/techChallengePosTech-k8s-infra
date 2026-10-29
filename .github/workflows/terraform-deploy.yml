@@ -2,7 +2,7 @@ name: Terraform Deploy
 
 on:
   push:
-    branches: [homolog]
+    branches: [homolog, main]
   workflow_dispatch:
     inputs:
       action:
@@ -11,7 +11,7 @@ on:
         options: [validate, plan, apply]
         default: validate
       confirm_apply:
-        description: 'For apply only, type APLICAR HOMOLOG'
+        description: 'For apply only: APLICAR HOMOLOG or APLICAR PRODUCTION (main)'
         type: string
         default: ''
       verify_kubernetes:
@@ -27,9 +27,11 @@ env:
   REQUESTED_ACTION: ${{ inputs.action }}
   APPLY_CONFIRMATION: ${{ inputs.confirm_apply }}
   PUSH_DELETED: ${{ github.event.deleted }}
+  INFRA_DEPLOY_REPOSITORY: ${{ vars.INFRA_DEPLOY_REPOSITORY }}
+  PRODUCTION_CAPACITY_APPROVED: ${{ vars.PRODUCTION_CAPACITY_APPROVED }}
 
 concurrency:
-  group: terraform-infra-homolog
+  group: terraform-infra-${{ github.ref == 'refs/heads/main' && 'production' || 'homolog' }}
   cancel-in-progress: false
 
 jobs:
@@ -45,6 +47,11 @@ jobs:
     outputs:
       plan: ${{ steps.operation.outputs.plan }}
       apply: ${{ steps.operation.outputs.apply }}
+      environment: ${{ steps.operation.outputs.environment }}
+      directory: ${{ steps.operation.outputs.directory }}
+      apply_environment: ${{ steps.operation.outputs.apply_environment }}
+      state_key: ${{ steps.operation.outputs.state_key }}
+      tfvars_secret: ${{ steps.operation.outputs.tfvars_secret }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,17 +64,20 @@ jobs:
         run: node scripts/require-apply-approval.mjs request
 
   plan:
-    name: Plan homolog only
+    name: Plan selected environment
     needs: [validate, request]
     if: needs.request.outputs.plan == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: homolog
+    environment: ${{ needs.request.outputs.environment }}
     env:
       AWS_REGION: us-east-1
       AWS_DEFAULT_REGION: us-east-1
       EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      TF_BACKEND_BUCKET: ${{ vars.TF_BACKEND_BUCKET }}
+      TF_BACKEND_BUCKET: ${{ vars.TF_BACKEND_BUCKET || format('fiap-tc3-k8s-tfstate-{0}', vars.AWS_ACCOUNT_ID) }}
+      DEPLOY_ENVIRONMENT: ${{ needs.request.outputs.environment }}
+      TF_STATE_KEY: ${{ needs.request.outputs.state_key }}
+      TF_WORKSPACE: default
       TF_IN_AUTOMATION: 'true'
     steps:
       - uses: actions/checkout@v4
@@ -94,39 +104,39 @@ jobs:
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
         run: bash scripts/check-aws-account.sh
       - name: Generate saved plan and sanitized summary
-        working-directory: environments/homolog
+        working-directory: ${{ needs.request.outputs.directory }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-          TFVARS_CONTENT: ${{ secrets.TFVARS_HOMOLOG }}
+          TFVARS_CONTENT: ${{ secrets[needs.request.outputs.tfvars_secret] }}
         run: |
           set -euo pipefail
           umask 077
           test -n "$TFVARS_CONTENT"
-          printf '%s\n' "$TFVARS_CONTENT" > "$RUNNER_TEMP/homolog.tfvars"
+          printf '%s\n' "$TFVARS_CONTENT" > "$RUNNER_TEMP/reviewed.tfvars"
           source ../../scripts/backend.sh
           terraform validate -no-color
-          if ! terraform plan -input=false -lock-timeout=60s -var-file="$RUNNER_TEMP/homolog.tfvars" -out="$RUNNER_TEMP/homolog.tfplan" > "$RUNNER_TEMP/plan-private.log" 2>&1; then
+          if ! terraform plan -input=false -lock-timeout=60s -var-file="$RUNNER_TEMP/reviewed.tfvars" -out="$RUNNER_TEMP/reviewed.tfplan" > "$RUNNER_TEMP/plan-private.log" 2>&1; then
             echo 'Plan failed; private log withheld. Check Academy credentials/backend/configuration.' >&2; exit 1
           fi
-          terraform show -json "$RUNNER_TEMP/homolog.tfplan" | node ../../scripts/terraform-plan-summary.mjs | tee "$RUNNER_TEMP/plan-summary.json"
+          terraform show -json "$RUNNER_TEMP/reviewed.tfplan" | node ../../scripts/terraform-plan-summary.mjs | tee "$RUNNER_TEMP/plan-summary.json"
           cat "$RUNNER_TEMP/plan-summary.json" >> "$GITHUB_STEP_SUMMARY"
       - name: Encrypt exact plan for approved apply in this same run
         if: needs.request.outputs.apply == 'true'
         env:
           TF_PLAN_ENCRYPTION_KEY: ${{ secrets.TF_PLAN_ENCRYPTION_KEY }}
-        run: node scripts/plan-artifact.mjs encrypt "$RUNNER_TEMP/homolog.tfplan" "$RUNNER_TEMP/homolog.tfplan.enc"
+        run: node scripts/plan-artifact.mjs encrypt "$RUNNER_TEMP/reviewed.tfplan" "$RUNNER_TEMP/reviewed.tfplan.enc"
       - uses: actions/upload-artifact@v4
         if: needs.request.outputs.apply == 'true'
         with:
-          name: homolog-plan-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/homolog.tfplan.enc
+          name: ${{ needs.request.outputs.environment }}-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reviewed.tfplan.enc
           retention-days: 1
           if-no-files-found: error
       - name: Remove private runner files
         if: always()
-        run: rm -f "$RUNNER_TEMP/homolog.tfvars" "$RUNNER_TEMP/homolog.tfplan" "$RUNNER_TEMP/plan-private.log"
+        run: rm -f "$RUNNER_TEMP/reviewed.tfvars" "$RUNNER_TEMP/reviewed.tfplan" "$RUNNER_TEMP/plan-private.log"
 
   apply:
     name: Apply reviewed saved plan
@@ -134,12 +144,15 @@ jobs:
     if: needs.request.outputs.apply == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: homolog-apply
+    environment: ${{ needs.request.outputs.apply_environment }}
     env:
       AWS_REGION: us-east-1
       AWS_DEFAULT_REGION: us-east-1
       EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      TF_BACKEND_BUCKET: ${{ vars.TF_BACKEND_BUCKET }}
+      TF_BACKEND_BUCKET: ${{ vars.TF_BACKEND_BUCKET || format('fiap-tc3-k8s-tfstate-{0}', vars.AWS_ACCOUNT_ID) }}
+      DEPLOY_ENVIRONMENT: ${{ needs.request.outputs.environment }}
+      TF_STATE_KEY: ${{ needs.request.outputs.state_key }}
+      TF_WORKSPACE: default
       TF_IN_AUTOMATION: 'true'
     steps:
       - uses: actions/checkout@v4
@@ -161,12 +174,12 @@ jobs:
         run: echo "TF_DATA_DIR=$RUNNER_TEMP/terraform-apply-data" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
-          name: homolog-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ needs.request.outputs.environment }}-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/approved-plan
       - name: Verify encrypted plan context, integrity and age
         env:
           TF_PLAN_ENCRYPTION_KEY: ${{ secrets.TF_PLAN_ENCRYPTION_KEY }}
-        run: node scripts/plan-artifact.mjs decrypt "$RUNNER_TEMP/approved-plan/homolog.tfplan.enc" "$RUNNER_TEMP/homolog.tfplan"
+        run: node scripts/plan-artifact.mjs decrypt "$RUNNER_TEMP/approved-plan/reviewed.tfplan.enc" "$RUNNER_TEMP/reviewed.tfplan"
       - name: Recheck Academy credentials after waiting for approval
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -174,7 +187,7 @@ jobs:
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
         run: bash scripts/check-aws-account.sh
       - name: Apply only the saved reviewed plan
-        working-directory: environments/homolog
+        working-directory: ${{ needs.request.outputs.directory }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -182,14 +195,14 @@ jobs:
         run: |
           set -euo pipefail
           source ../../scripts/backend.sh
-          terraform show -json "$RUNNER_TEMP/homolog.tfplan" | node ../../scripts/terraform-plan-summary.mjs
-          if ! terraform apply -input=false -lock-timeout=60s "$RUNNER_TEMP/homolog.tfplan" > "$RUNNER_TEMP/apply-private.log" 2>&1; then
+          terraform show -json "$RUNNER_TEMP/reviewed.tfplan" | node ../../scripts/terraform-plan-summary.mjs
+          if ! terraform apply -input=false -lock-timeout=60s "$RUNNER_TEMP/reviewed.tfplan" > "$RUNNER_TEMP/apply-private.log" 2>&1; then
             echo 'Apply failed; private log withheld. Diagnose before retry.' >&2; exit 1
           fi
-          echo 'Saved plan applied. No bootstrap, Security Group mutation or application deploy was invoked.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Saved plan applied. Only the reviewed Terraform changes were executed; no bootstrap or application deploy was invoked.' >> "$GITHUB_STEP_SUMMARY"
       - name: Remove private runner files
         if: always()
-        run: rm -f "$RUNNER_TEMP/homolog.tfplan" "$RUNNER_TEMP/apply-private.log"
+        run: rm -f "$RUNNER_TEMP/reviewed.tfplan" "$RUNNER_TEMP/apply-private.log"
 
   verify-kubernetes:
     name: Optional read-only Kubernetes checks
