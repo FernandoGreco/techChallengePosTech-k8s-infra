@@ -1,0 +1,71 @@
+{
+  "checked_utc": "2026-10-28T00:34:18.219Z",
+  "region": "us-east-1",
+  "context": "kubernetes-admin@kubernetes",
+  "namespace": "oficina-tc3",
+  "control_plane": {
+    "instance": "i-0ceda6c6a818b75ac",
+    "ready": true
+  },
+  "worker": {
+    "instance": "i-0f93be0748f23792c",
+    "ready": true,
+    "cpu_m": 118,
+    "memory_mi": 1548
+  },
+  "schema": {
+    "job": "oficina-schema-demo-v3",
+    "condition": "Complete",
+    "duration_seconds": 15,
+    "public_base_tables": 10,
+    "seed_executed": false
+  },
+  "application": {
+    "deployment": "oficina-api",
+    "ready_replicas": 1,
+    "restarts": 0,
+    "cpu_m": 7,
+    "memory_mi": 50,
+    "postgres_read_select1": true,
+    "image": "ghcr.io/felipevrds/techchallengepostech-aplication@sha256:9bf31905088a122cda1505f6a27b168eb0c1922326910634f2d0aa0649b3244b"
+  },
+  "http": {
+    "swagger": 200,
+    "swagger_json": 200,
+    "swagger_paths": 28,
+    "expected_paths_present": true,
+    "protected_without_token": 401
+  },
+  "hpa": {
+    "cpu_percent": 7,
+    "target_percent": 70,
+    "min": 1,
+    "max": 2,
+    "able_to_scale": true,
+    "scaling_active": true,
+    "forced_load": false
+  },
+  "observability": {
+    "alloy_healthy": true,
+    "api_cpu_memory_cloud_http": 200,
+    "api_cpu_series": 1,
+    "api_memory_series": 1,
+    "loki_read_http": 401,
+    "loki_read_scope_missing": true,
+    "cloud_api_logs_manual_confirmation": true,
+    "traces_verified": false,
+    "cloud_api_logs_confirmation_source": "user_portal_loki",
+    "cloud_api_logs_confirmation_utc": "2026-10-28T00:36:02.042Z"
+  },
+  "github": {
+    "infra_run": "https://github.com/felipevrds/techChallengePosTech-k8s-infra/actions/runs/40560618869",
+    "conclusion": "success",
+    "required_check": "Validate infrastructure",
+    "protected_branches": [
+      "homolog",
+      "main"
+    ],
+    "apply_environment_review_required": true,
+    "apply_admin_bypass": false
+  }
+}

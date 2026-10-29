@@ -1,7 +1,12 @@
 terraform {
-  backend "local" {}
+  backend "s3" {
+    key          = "homolog/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 
-  required_version = ">= 1.6.0, < 2.0.0"
+  required_version = ">= 1.10.0, < 2.0.0"
 
   required_providers {
     aws = {

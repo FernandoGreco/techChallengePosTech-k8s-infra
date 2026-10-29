@@ -41,22 +41,6 @@ fi
 
 echo "Conta AWS validada com sucesso: $CURRENT_AWS_ACCOUNT_ID"
 
-# Selecionar estado Terraform da conta AWS
-TERRAFORM_STATE_ROOT="${TERRAFORM_STATE_ROOT:-${SCRIPT_DIR}/../.terraform-accounts}"
-TERRAFORM_WORK_DIR="${TERRAFORM_STATE_ROOT}/${CURRENT_AWS_ACCOUNT_ID}"
-STATE_FILE="${TERRAFORM_WORK_DIR}/terraform.tfstate"
-
-if [[ ! -f "$STATE_FILE" ]]; then
-  echo "ERRO: estado Terraform nao encontrado:"
-  echo "$STATE_FILE"
-  echo "Validacao Kubernetes cancelada."
-  exit 1
-fi
-
-export TF_DATA_DIR="${TERRAFORM_WORK_DIR}/data"
-
-echo "Estado Terraform selecionado: $STATE_FILE"
-
 echo ""
 echo "========================================"
 echo " Identificando Control Plane"
@@ -64,14 +48,7 @@ echo "========================================"
 
 cd "$TERRAFORM_DIR"
 
-TERRAFORM_STATE_PATH="$STATE_FILE"
-
-if command -v cygpath >/dev/null 2>&1; then
-  TERRAFORM_STATE_PATH="$(cygpath -m "$TERRAFORM_STATE_PATH")"
-fi
-
-terraform init -reconfigure -input=false \
-  -backend-config="path=${TERRAFORM_STATE_PATH}"
+source "${SCRIPT_DIR}/backend.sh"
 
 CONTROL_PLANE_ID="$(terraform output -raw control_plane_id)"
 

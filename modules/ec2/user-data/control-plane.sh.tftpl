@@ -13,10 +13,16 @@ cat > /tmp/install-cni.sh <<'CNI_INSTALL'
 ${install_cni}
 CNI_INSTALL
 
+cat > /tmp/install-metrics.sh <<'METRICS_INSTALL'
+${install_metrics}
+METRICS_INSTALL
+
 chmod +x /tmp/install-k8s.sh \
   /tmp/init-control-plane.sh \
-  /tmp/install-cni.sh
+  /tmp/install-cni.sh \
+  /tmp/install-metrics.sh
 
 bash /tmp/install-k8s.sh
 bash /tmp/init-control-plane.sh
 bash /tmp/install-cni.sh
+# Metrics Server depende do worker: scripts/deploy.sh o instala apos o join.

@@ -49,22 +49,6 @@ fi
 
 echo "Configuracao Terraform selecionada: $TFVARS_FILE"
 
-# Selecionar estado Terraform da conta AWS
-TERRAFORM_STATE_ROOT="${TERRAFORM_STATE_ROOT:-${SCRIPT_DIR}/../.terraform-accounts}"
-TERRAFORM_WORK_DIR="${TERRAFORM_STATE_ROOT}/${CURRENT_AWS_ACCOUNT_ID}"
-STATE_FILE="${TERRAFORM_WORK_DIR}/terraform.tfstate"
-
-if [[ ! -f "$STATE_FILE" ]]; then
-  echo "ERRO: estado Terraform nao encontrado:"
-  echo "$STATE_FILE"
-  echo "Destruicao cancelada por seguranca."
-  exit 1
-fi
-
-export TF_DATA_DIR="${TERRAFORM_WORK_DIR}/data"
-
-echo "Estado Terraform selecionado: $STATE_FILE"
-
 echo ""
 echo "========================================"
 echo " Inicializando Terraform para destruicao"
@@ -72,9 +56,7 @@ echo "========================================"
 
 cd "$TERRAFORM_DIR"
 
-terraform init -reconfigure -input=false \
-  -backend-config="path=${STATE_FILE}"
-
+source "${SCRIPT_DIR}/backend.sh"
 echo ""
 echo "========================================"
 echo " Validando configuracao Terraform"
