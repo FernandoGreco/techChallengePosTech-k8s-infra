@@ -3,12 +3,11 @@
 ## 1. Objetivo
 
 Provisionar e operar Kubernetes com Terraform no AWS Academy Learner Lab.
-O cluster usa **kubeadm em duas EC2 Ubuntu, sem EKS**, com containerd, Calico,
+O cluster utiliza **kubeadm em duas EC2 Ubuntu, sem EKS**, com containerd, Calico,
 Metrics Server e Grafana Cloud/Alloy.
 
-A demonstração executou o NestJS do fork da aplicação com PostgreSQL temporário,
-sem utilizar o banco compartilhado da equipe. A organização deste README segue
-a referência local da Fase 2: `techChallengePosTech_v2/README.md`.
+A aplicação NestJS foi demonstrada com PostgreSQL temporário em namespace
+exclusivo, sem utilizar o banco compartilhado da equipe.
 
 ## 2. Arquitetura
 
@@ -19,29 +18,30 @@ flowchart TB
   CI --> P["Plan salvo e resumo sanitizado"]
   P --> A["Aprovação humana no Environment"]
   A --> AP["Apply do mesmo plano criptografado"]
-  AP --> S3["S3: homolog/ e production/ separados"]
+  AP --> S3["S3: states homolog/ e production/ separados"]
   AP --> AWS["AWS Academy: VPC/subnet e Key Pair existentes"]
-  subgraph DEMO["Cluster de demonstração — kubeadm"]
+  subgraph K8S["Cluster de demonstração — kubeadm"]
     CP["EC2 Control Plane"] --> WK["EC2 Worker"]
     WK --> API["NestJS — ClusterIP"]
-    API --> PG["PostgreSQL demo — emptyDir"]
-    MS["Metrics Server"] --> HPA["HPA API: 1–2 Pods"]
+    API --> PG["PostgreSQL temporário — emptyDir"]
+    MS["Metrics Server"] --> HPA["HPA da API: 1–2 Pods"]
     HPA --> API
     AL["Alloy por nó"]
   end
   AWS --> CP
   AWS --> WK
   GHCR["GHCR: imagem por digest"] --> API
-  LOCAL["Swagger via localhost / túnel SSH"] --> API
+  LOCAL["Swagger via túnel localhost"] --> API
   CP --> AL
   WK --> AL
   AL --> GC["Grafana Cloud: métricas, logs e eventos"]
 ```
 
-O diagrama combina o pipeline e o cluster de demonstração. O workflow Terraform
-não implanta NestJS nem executa join do Worker. Produção tem configuração própria;
-não foi provisionada nesta implementação local. Um Control Plane e um Worker
-constituem uma topologia de laboratório, com pontos únicos de falha.
+O diagrama representa o fluxo Terraform e os componentes demonstrados.
+O workflow Terraform não implanta NestJS nem executa join do Worker.
+Control Plane e Worker únicos são pontos de falha; HPA aumenta Pods, não EC2.
+Produção possui configuração independente e não é representada como cluster
+operacional pelas evidências da demonstração.
 
 ## 3. Tecnologias
 
@@ -53,20 +53,22 @@ constituem uma topologia de laboratório, com pontos únicos de falha.
 | Escalabilidade | Metrics Server 0.8.0, HPA autoscaling/v2 |
 | Observabilidade | Grafana Cloud, Alloy, Helm 3.22.1, chart 4.5.5 |
 | CI | Node 22, actionlint, kubeconform, Helm lint/template |
-| Demonstração | NestJS/Prisma e PostgreSQL efêmero |
+| Aplicação demonstrada | NestJS/Prisma e PostgreSQL efêmero |
 
-## 4. Organização e navegação
+## 4. Documentação
 
-| Documento/diretório | Finalidade |
+| Documento | Conteúdo |
 | --- | --- |
 | [COMECE-AQUI](COMECE-AQUI.md) | Início rápido |
 | [GUIA-EXECUCAO](GUIA-EXECUCAO.md) | Operação e reprodução em outra conta |
-| [docs/](docs/INDEX.md) | Arquitetura, decisões e CI/CD |
-| [evidencias/](evidencias/INDEX.md) | Comprovações e origem dos resultados |
-| [observability/](observability/PLANO-GRAFANA.md) | Grafana Cloud Lightweight |
-| environments/homolog/ e environments/production/ | Terraform independente por ambiente |
-| modules/ec2/ e modules/security/ | EC2, cloud-init e comunicação entre nós |
-| scripts/ e tests/ | Operação e testes de segurança |
+| [Arquitetura](docs/ARQUITETURA-INFRA.md) | Componentes e responsabilidades |
+| [CI/CD](docs/CICD-HOMOLOG.md) | Homologação, produção e aprovações |
+| [ADRs e requisitos](docs/INDEX.md) | Decisões e rastreabilidade |
+| [Grafana Cloud](observability/PLANO-GRAFANA.md) | Configuração Lightweight |
+| [Evidências](evidencias/INDEX.md) | Resultados, fontes e alcance |
+
+Terraform fica em environments/homolog/, environments/production/ e modules/.
+Scripts operacionais e testes ficam em scripts/ e tests/.
 
 ## 5. CI/CD
 
@@ -75,30 +77,29 @@ constituem uma topologia de laboratório, com pontos únicos de falha.
 | homolog | homolog | homolog-apply | homolog/terraform.tfstate |
 | main | production | production-apply | production/terraform.tfstate |
 
-Push/merge inicia CI, Terraform Validate e Plan salvo. Após revisão, o Apply
-aguarda **aprovação humana obrigatória**. Produção exige também a variável de
-repositório `PRODUCTION_CAPACITY_APPROVED=true`, após revisão de capacidade/custos.
-Não se presume que o Lab suporta dois clusters simultâneos.
+Push/merge inicia CI, Terraform Validate e Plan salvo. Apply exige **aprovação
+humana obrigatória**. Produção também exige a variável de repositório
+PRODUCTION_CAPACITY_APPROVED=true, após avaliação de capacidade/custos:
+o Lab não é presumido capaz de manter dois clusters simultâneos.
 
-O Apply usa somente o plano salvo da mesma execução: AES-256-GCM, integridade,
-prazo de quatro horas e vínculo com conta, região, commit, run/tentativa,
-repositório, ambiente, bucket e chave do state. Credenciais temporárias Academy
-são verificadas antes do Plan e novamente depois da aprovação.
+O Apply utiliza o plano salvo da mesma execução, criptografado com AES-256-GCM.
+Integridade, validade de quatro horas e contexto de conta, região, commit,
+run/tentativa, repositório, ambiente, bucket e chave do state são verificados.
+As credenciais temporárias são revalidadas após a espera pela aprovação.
 
-Exclusões, substituições, atualizações de user-data e alterações disruptivas de
-EC2 são bloqueadas. As duas EC2 ignoram mudanças de user-data. Outras mudanças
-permitidas continuam sujeitas à revisão humana. O fluxo começa automaticamente;
-**não é Apply automático sem aprovação**.
+O guard bloqueia exclusões, substituições, alterações de user-data e mudanças
+disruptivas de EC2. As instâncias ignoram alterações de user_data. Outras mudanças
+permitidas permanecem sujeitas à revisão do plano. O início é automático;
+**Apply não é executado automaticamente sem aprovação humana**.
 
-Produção foi implementada e validada localmente. Os resultados de homologação
-estão no [índice de evidências](evidencias/INDEX.md).
-Por padrão, o guard autoriza o fork felipevrds; o original FernandoGreco requer
-[configuração explícita](GUIA-EXECUCAO.md#reprodução-em-outra-conta-aws-e-configuração-do-github-actions).
+A autorização do repositório é explícita e limitada aos destinos conhecidos.
+Consulte a [configuração de reprodução](GUIA-EXECUCAO.md#reprodução-em-outra-conta-aws-e-configuração-do-github-actions)
+e o [registro de CI/CD](evidencias/CI-CD.md).
 
-## 6. Execução e validação
+## 6. Execução
 
 Pré-requisitos: Git Bash/SSH, AWS CLI e Terraform. Credenciais e chave SSH ficam
-fora do Git. Da raiz, com ferramentas instaladas:
+fora do Git. Validação local:
 
 ```bash
 node --test tests/cicd-guards.test.mjs
@@ -106,52 +107,51 @@ terraform fmt -check -recursive environments modules
 find scripts modules/ec2/user-data tests observability -name '*.sh' -type f -print0 | xargs -0 -r -n 1 bash -n
 ```
 
-Init sem backend, validate e demais ferramentas estão no [guia](GUIA-EXECUCAO.md).
-Provisionamento, bootstrap, carga e limpeza são operações distintas, autorizadas
-separadamente. Não repetir provisionamento para demonstrar um cluster operacional.
+Init/validate sem backend e os demais procedimentos estão no
+[guia de execução](GUIA-EXECUCAO.md). Provisionamento, bootstrap, carga e limpeza
+são operações distintas, autorizadas separadamente.
 
-## 7. Demonstração da aplicação e HPA
+## 7. Aplicação e HPA
 
-O [fork NestJS](https://github.com/felipevrds/techChallengePosTech-Aplication/tree/feature/deploy-kubernetes)
-utiliza imagem por digest, Service ClusterIP e startup `node dist/main.js`.
-Um Job separado preparou o schema, sem seed. PostgreSQL usa `emptyDir`: é
-descartável, pode perder dados com substituição do Pod e **não é RDS**.
+Os [manifests da aplicação](https://github.com/felipevrds/techChallengePosTech-Aplication/tree/feature/deploy-kubernetes/k8s/homolog)
+utilizam imagem por digest, Service ClusterIP e startup node dist/main.js.
+Um Job separado preparou dez tabelas sem seed.
+O PostgreSQL usa emptyDir: pode perder dados ao substituir o Pod e **não é RDS**.
 
-Swagger validado em `http://127.0.0.1:18080/api/docs`, somente com túnel ativo.
-Não é endpoint público permanente. Consulte os
-[comandos de acesso](GUIA-EXECUCAO.md#acesso-local-ao-swagger).
+O Swagger foi validado em http://127.0.0.1:18080/api/docs, com túnel ativo.
+Não é endpoint público permanente. Veja [como acessar](GUIA-EXECUCAO.md#acesso-local-ao-swagger).
 
-- HPA sintético em hpa-lab: alvo 50% CPU, 1–4 réplicas, escala observada 1→4→1.
-- HPA da API: alvo 70% CPU, 1–2 réplicas. O responsável informou escala 1→2,
-  9.986 respostas HTTP bem-sucedidas e zero erros. O gerador rodou dentro do Pod:
-  **não é benchmark independente**. A confirmação tem
-  [origem identificada](evidencias/2026-10-28-resultados-informados.md).
+- HPA sintético: CPU alvo 50%, 1–4 réplicas, escala observada 1→4→1.
+- HPA da API: CPU alvo 70%, 1–2 réplicas. A confirmação manual do responsável
+  registra escala 1→2, 9.986 respostas HTTP bem-sucedidas e zero erros.
+  O gerador rodou dentro do Pod: **não constitui benchmark independente**.
 
-## 8. Grafana Cloud e evidências
+As fontes e limitações estão na [evidência HPA da aplicação](evidencias/HPA-APLICACAO.md).
+
+## 8. Observabilidade e comprovações
 
 Alloy coleta métricas de cluster/nós/pods, logs e eventos Kubernetes.
 A configuração Lightweight usa seis Pods permanentes, sem servidores locais
 Grafana/Prometheus/Loki. Os values referenciam Secret existente, sem credenciais.
 
-| Resultado | Evidência |
+| Comprovação | Registro |
 | --- | --- |
 | Nós, Calico, Metrics Server e HPA sintético | [Kubernetes/HPA](evidencias/2026-10-27-kubernetes-hpa.txt) |
 | Idempotência Metrics Server | [Comparação](evidencias/2026-10-27-metrics-idempotencia.txt) |
-| Métricas recentes Cloud | [API](evidencias/2026-10-27-grafana-cloud-api.json) |
-| Logs/eventos Loki, confirmação manual | [Registro](evidencias/2026-10-27-grafana-validacao-manual.md) |
-| NestJS, Job e PostgreSQL | [Resultado](evidencias/tc3-deploy-resultado-local.json) |
-| Logs NestJS Loki, confirmação manual | [Registro](evidencias/tc3-deploy-loki-confirmacao-manual-local.json) |
-| CI real e correção do lockfile | [Registro](evidencias/2026-10-27-ci-github-feature.md) |
-| HPA final e Apply sem alterações, informados pelo responsável | [Origem e alcance](evidencias/2026-10-28-resultados-informados.md) |
-| Fluxo homolog/main testado localmente | [Testes](docs/VALIDACAO-LOCAL-CICD.md) |
+| Saúde dos coletores | [Grafana no cluster](evidencias/2026-10-27-grafana-cluster.txt) |
+| Métricas recebidas no Cloud | [API](evidencias/2026-10-27-grafana-cloud-api.json) |
+| Logs/eventos, confirmação manual | [Loki](evidencias/2026-10-27-grafana-validacao-manual.md) |
+| NestJS, schema e PostgreSQL | [Aplicação](evidencias/tc3-deploy-resultado-local.json) |
+| Logs NestJS, confirmação manual | [Loki da API](evidencias/tc3-deploy-loki-confirmacao-manual-local.json) |
+| CI e aprovação protegida | [CI/CD](evidencias/CI-CD.md) |
 
 Traces não estão incluídos nas validações comprovadas.
-Veja a [configuração Grafana](observability/PLANO-GRAFANA.md) e o
-[índice completo](evidencias/INDEX.md).
+O [índice de evidências](evidencias/INDEX.md) distingue consultas automatizadas,
+confirmações manuais e controles verificados no código.
 
-## 9. Segurança operacional
+## 9. Segurança
 
 Não versionar credenciais, PATs, .env, chaves, kubeconfig administrativo, tfvars,
-state ou planos. Validar host keys SSH por canal confiável. Scripts de
-provisionamento/carga/limpeza não são diagnóstico de leitura. Limpeza tem escopo
-e autorização próprios e não faz parte dos workflows.
+state ou planos. Validar host keys SSH por canal confiável.
+Scripts de provisionamento/carga/limpeza não são diagnósticos de leitura.
+Limpeza tem escopo e autorização próprios e não faz parte dos workflows.

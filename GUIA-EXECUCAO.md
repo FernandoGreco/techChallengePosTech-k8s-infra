@@ -2,8 +2,9 @@
 
 ## Ambientes
 
-Kubeadm em EC2 Ubuntu, sem EKS. Consultar o [status](docs/STATUS-INFRA.md) antes
-de operar um ambiente existente.
+Kubeadm em EC2 Ubuntu, sem EKS. Consultar a [arquitetura](docs/ARQUITETURA-INFRA.md)
+e o [catálogo de evidências](evidencias/INDEX.md) antes de operar um ambiente
+existente. Os registros são datados e não substituem diagnóstico atual.
 
 | Ambiente | Branch | Diretório | State S3 | Aprovação |
 | --- | --- | --- | --- | --- |
@@ -80,8 +81,8 @@ aws ec2 describe-key-pairs --profile academy-tc3 --region us-east-1 --query 'Key
 ```
 
 Conferir rotas/saída, VPC/subnet, Key Pair e posse da chave correspondente.
-Usar CIDR SSH restrito, preferencialmente /32. Não reutilizar IDs da conta de
-Felipe. Preparar tfvars privado a partir do exemplo do ambiente: aws_region,
+Usar CIDR SSH restrito, preferencialmente /32. Não reutilizar identificadores
+ou credenciais de outra conta. Preparar tfvars privado a partir do exemplo: aws_region,
 vpc_id, subnet_ids, ssh_key_name e ssh_allowed_cidr. As duas EC2 usam a primeira
 subnet. modules/network não é utilizado.
 
@@ -223,6 +224,11 @@ apontar Job para RDS compartilhado. HPA sintético 1–4 e API 1–2 são testes
 Seguir o [plano Grafana](observability/PLANO-GRAFANA.md) sem duplicar release.
 Metrics Server atende HPA/top; Alloy envia métricas/logs/eventos. Para entrega
 integrada, consultar a [matriz de requisitos](docs/REQUISITOS-FASE-3.md).
+
+Em outra conta ou stack, revisar endpoints, nome de cluster e identidade usados
+pelos helpers/values de observabilidade. Não reutilizar tokens, chaves SSH ou
+known_hosts de outro ambiente. As chaves dos hosts devem ser verificadas por
+canal confiável antes da conexão; um endereço antigo não comprova identidade.
 
 ## Acesso local ao Swagger
 

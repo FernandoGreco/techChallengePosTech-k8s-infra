@@ -1,32 +1,41 @@
 # ADR-001 — Grafana Cloud para observabilidade de Kubernetes
-Status: proposta de decisão; requer aceite do grupo
 
-Implementação técnica concluída no laboratório: métricas por API, logs/eventos
-confirmados manualmente no Cloud. O status de aceite arquitetural do grupo não
-foi presumido. Ver [evidências](../evidencias/INDEX.md).
+Status: implementação técnica adotada no laboratório; aceite arquitetural formal
+da equipe não registrado.
 
 ## Contexto
-Tech Challenge fase 3, duas EC2 AWS Academy com Kubernetes kubeadm.
-Monitorar saúde, CPU, memória, alertas, logs e APIs sem sobrecarregar
-o cluster acadêmico.
+
+O cluster kubeadm utiliza duas EC2 AWS Academy e capacidade limitada.
+CPU/memória, saúde, logs e eventos devem ser observáveis sem manter servidores
+adicionais de armazenamento de telemetria no cluster.
 
 ## Decisão
-Usar **Grafana Cloud Kubernetes Monitoring**, com **Alloy** instalado
-pelo chart oficial `grafana/k8s-monitoring`, e manter Metrics Server
-para o HPA. Selecionar implantação **Lightweight**.
 
-## Motivos
-Menos serviços persistentes na EC2; métricas, logs e alertas em um
-portal; instalação guiada pelo fornecedor. Datadog e New Relic são
-alternativas aceitas, mas não obrigatórias pelo desafio.
+Utilizar Grafana Cloud Kubernetes Monitoring com Alloy pelo chart oficial
+grafana/k8s-monitoring, em modo Lightweight. Manter Metrics Server para HPA/top.
+Habilitar métricas de cluster/nós/pods, logs de containers e eventos explicitamente
+nos values. Desabilitar Fleet paralelo e componentes opcionais não utilizados.
 
-## Consequências e riscos
-Requer conta externa e token; plano gratuito tem limites; depende
-de saída HTTPS; dados sensíveis dos logs precisam ser tratados.
-Métricas de latência, traces e indicadores de ordens de serviço
-dependem de instrumentação da aplicação, fora do escopo de
-Terraform/Kubernetes isoladamente.
+## Justificativa
 
-## Validação
-Só marcar concluído após ver telemetria real no portal, teste de
-alerta e evidência de HPA com réplicas adicionais.
+Centralizar a telemetria no serviço gerenciado reduz o número de componentes
+persistentes nas EC2. Configuração versionada e Secret externo permitem
+reprodução sem credenciais no Git. A ferramenta é uma escolha livre dentro do
+requisito de observabilidade do desafio.
+
+## Consequências
+
+Há dependência de saída HTTPS, credenciais externas e limites do plano contratado.
+Logs precisam de tratamento de dados sensíveis. RBAC e leitura dos logs de host
+requerem revisão; TLS de laboratório do kubelet não representa configuração de
+produção.
+
+Métricas de latência, traces, correlação e indicadores de ordens de serviço exigem
+instrumentação da aplicação. A coleta de recursos/logs não os comprova.
+
+## Comprovação
+
+Métricas foram recebidas por API Cloud; logs/eventos têm confirmação manual no
+destino. Não há comprovação de traces ou de disparo de alerta de negócio.
+
+[Configuração](../observability/PLANO-GRAFANA.md) · [Evidências](../evidencias/INDEX.md)

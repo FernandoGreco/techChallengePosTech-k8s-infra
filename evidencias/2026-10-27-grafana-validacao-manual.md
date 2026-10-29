@@ -1,21 +1,23 @@
-# Confirmação manual Grafana Cloud
+# Evidência de logs e eventos — Grafana Cloud
 
-Registrada em 27/10/2026, conforme confirmação explícita do responsável pelo
-projeto nesta conversa. Não é uma consulta automatizada nem captura de tela.
+Data da confirmação: 27/10/2026.
+Origem: verificação manual no portal Loki pelo responsável.
+Não é consulta automatizada nem captura de tela.
 
-O usuário confirmou no Loki:
+## Observações confirmadas
 
-- Logs reais dos pods Kubernetes.
-- 74 eventos com o filtro job=integrations/kubernetes/eventhandler.
-- Eventos Started e Created do pod tc3-observability-check.
+- Logs reais dos Pods Kubernetes visíveis no destino.
+- 74 eventos no filtro job=integrations/kubernetes/eventhandler.
+- Eventos Created e Started do Pod tc3-observability-check.
 
-Conclusão: leitura de logs e eventos no destino validada manualmente. Com a
-validação automática anterior de CPU/memória de nós e pods, os três sinais
-solicitados estão validados.
+A [consulta de métricas](2026-10-27-grafana-cloud-api.json) registra CPU/memória
+de nós/Pods recebidas pelo Cloud. Logs/eventos possuem a confirmação manual acima.
 
-O token de instalação continua sem logs:read. Os relatórios anteriores com
-HTTP 401 e logs_and_events_read_verified=false são resultados históricos da
-API com esse token; não foram alterados para simular sucesso automatizado.
+As consultas automatizadas de leitura Loki retornaram 401 por falta de scope.
+Esse resultado é preservado: não significa falha de envio e não foi substituído
+por um sucesso fictício. Não há captura de tela associada neste catálogo.
 
-Capturas do portal podem ser acrescentadas para o vídeo/entrega; nenhuma
-captura foi fornecida nesta etapa. Nenhuma credencial foi registrada.
+Essas observações não comprovam traces, logs JSON correlacionados da aplicação
+ou alertas de negócio.
+
+[Configuração](../observability/PLANO-GRAFANA.md) · [Índice](INDEX.md)

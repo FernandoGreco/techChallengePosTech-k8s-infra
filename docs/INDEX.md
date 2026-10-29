@@ -1,38 +1,27 @@
 # Documentação — Fase 3
 
-## Leitura principal
+## Operação
 
-- [README](../README.md).
-- [Comece aqui](../COMECE-AQUI.md).
-- [Execução e reprodução em outra conta](../GUIA-EXECUCAO.md).
-- [Status consolidado](STATUS-INFRA.md).
+- [README](../README.md): apresentação e componentes.
+- [Comece aqui](../COMECE-AQUI.md): início rápido.
+- [Guia de execução](../GUIA-EXECUCAO.md): validação, acesso e limpeza autorizada.
+- [Reprodução em outra conta AWS e configuração do GitHub Actions](../GUIA-EXECUCAO.md#reprodução-em-outra-conta-aws-e-configuração-do-github-actions).
 - [CI/CD homolog/main](CICD-HOMOLOG.md).
-- [Matriz de requisitos](REQUISITOS-FASE-3.md).
-- [Índice de evidências](../evidencias/INDEX.md).
 
 ## Arquitetura e decisões
 
 - [Arquitetura da infraestrutura](ARQUITETURA-INFRA.md).
 - [ADR-001: observabilidade](ADR-001-observabilidade.md).
-- [ADR-002: ambientes e aprovação](ADR-002-CICD-AMBIENTES.md).
-- [Grafana Lightweight](../observability/PLANO-GRAFANA.md).
+- [ADR-002: ambientes e aprovação de Apply](ADR-002-CICD-AMBIENTES.md).
+- [Rastreabilidade dos requisitos](REQUISITOS-FASE-3.md).
 
-## Operação e apresentação
+## Observabilidade e evidências
 
-- [Guia para Fernando](GUIA-FERNANDO.md).
-- [Checklist](CHECKLIST-FINAL.md).
-- [Testes locais](VALIDACAO-LOCAL-CICD.md).
-- [Roteiro](ROTEIRO-VIDEO.md).
-- [Acesso local ao Swagger](../GUIA-EXECUCAO.md#acesso-local-ao-swagger).
+- [Grafana Cloud Lightweight](../observability/PLANO-GRAFANA.md).
+- [Reprodução e validação Grafana](../observability/VERIFICAR-GRAFANA-CLOUD.md).
+- [Índice de evidências](../evidencias/INDEX.md).
+- [CI/CD](../evidencias/CI-CD.md).
+- [HPA da aplicação](../evidencias/HPA-APLICACAO.md).
 
-## Registros históricos preservados
-
-Datas/resultados dos documentos abaixo se referem às etapas descritas; não
-substituem o status consolidado ou o CI/CD atual:
-
-- [Revisão CI/CD](REVISAO-CICD.md).
-- [Preparação do PR #1](PR-FINALIZACAO-TC3.md).
-- [Revisão inicial da aplicação](REVISAO-APLICACAO-SEM-ALTERACOES.md).
-
-Os materiais pessoais de gravação permanecem somente no workspace, preservados.
-Não são dependências da reprodução em outra conta.
+Os registros de coleta identificam sua data e origem. Não representam consultas
+ao vivo ou comprovam funcionalidades além do alcance descrito.

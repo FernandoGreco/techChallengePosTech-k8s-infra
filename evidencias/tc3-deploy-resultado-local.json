@@ -1,19 +1,14 @@
 {
   "checked_utc": "2026-10-28T00:34:18.219Z",
-  "account": "207975764067",
   "region": "us-east-1",
   "context": "kubernetes-admin@kubernetes",
   "namespace": "oficina-tc3",
   "control_plane": {
     "instance": "i-0ceda6c6a818b75ac",
-    "public_ip": "32.197.231.217",
-    "private_ip": "172.31.87.121",
     "ready": true
   },
   "worker": {
     "instance": "i-0f93be0748f23792c",
-    "public_ip": "3.86.249.22",
-    "private_ip": "172.31.88.192",
     "ready": true,
     "cpu_m": 118,
     "memory_mi": 1548
@@ -23,11 +18,7 @@
     "condition": "Complete",
     "duration_seconds": 15,
     "public_base_tables": 10,
-    "seed_executed": false,
-    "previous_jobs_preserved": [
-      "oficina-schema-demo-v1",
-      "oficina-schema-demo-v2"
-    ]
+    "seed_executed": false
   },
   "application": {
     "deployment": "oficina-api",
@@ -43,8 +34,7 @@
     "swagger_json": 200,
     "swagger_paths": 28,
     "expected_paths_present": true,
-    "protected_without_token": 401,
-    "port_forward_stopped": true
+    "protected_without_token": 401
   },
   "hpa": {
     "cpu_percent": 7,

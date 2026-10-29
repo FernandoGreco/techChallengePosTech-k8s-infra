@@ -1,16 +1,16 @@
 # CI/CD — homologação e produção
 
-## Fluxo implementado
+## Fluxo
 
 ```mermaid
 flowchart LR
   H["Push homolog"] --> CI["CI reutilizável: dois ambientes"]
   M["Push main"] --> CI
-  CI --> T["Target fixo por branch; produção exige capacidade aprovada"]
+  CI --> T["Target por branch; produção exige capacidade aprovada"]
   T --> P["Plan salvo, guard e resumo sanitizado"]
-  P --> E["Artefato criptografado do run"]
+  P --> E["Artefato criptografado"]
   E --> R["Environment: aprovação humana"]
-  R --> V["Revalidar proteção, contexto, idade e conta"]
+  R --> V["Verificar proteções, contexto, idade e conta"]
   V --> A["Apply do plano exato"]
 ```
 
@@ -20,74 +20,72 @@ flowchart LR
 | production | main | environments/production | production / production-apply | production/terraform.tfstate |
 
 scripts/deployment-target.mjs seleciona o target pela ref exata. Não aceita pasta
-ou state arbitrários. Qualquer push nessas branches corresponde ao gatilho,
-inclusive documentação. Falha no CI impede Plan/Apply.
+ou state arbitrários. Qualquer push nas branches alvo, inclusive documental,
+corresponde ao gatilho. Falha no CI impede Plan/Apply.
 
-## Solicitações e aprovação
+## Solicitações
 
-- Push homolog: Plan e encaminhamento à aprovação.
-- Push main: equivalente, exigindo PRODUCTION_CAPACITY_APPROVED=true em variável
-  de repositório; sem ela, request falha antes de AWS.
-- Dispatch validate: CI sem AWS, inclusive antes de habilitar produção.
-- Dispatch plan: somente Plan na branch alvo.
-- Dispatch apply: APLICAR HOMOLOG ou APLICAR PRODUCTION, além da aprovação humana.
-- SSH opcional permanece somente em homolog/validate e depende de rede autorizada.
+| Solicitação | Comportamento |
+| --- | --- |
+| Push homolog | CI, Plan e encaminhamento à aprovação |
+| Push main | Equivalente, exigindo PRODUCTION_CAPACITY_APPROVED=true no repositório |
+| Dispatch validate | CI sem AWS, mesmo com produção desabilitada |
+| Dispatch plan | Somente Plan na branch alvo |
+| Dispatch apply | Confirmação APLICAR HOMOLOG ou APLICAR PRODUCTION e aprovação humana |
 
-O início é automático, mas Apply exige aprovação protegida. Não equivale a deploy
-totalmente automático sem intervenção humana. Homolog mantém seu comportamento
-protegido; produção foi implementada/testada localmente, sem execução remota.
+Sem confirmação de capacidade, produção falha antes do acesso AWS.
+A verificação SSH opcional permanece somente em homolog/validate e depende de rede
+previamente autorizada. O fluxo inicia automaticamente, mas não equivale a Apply
+automático sem intervenção humana.
 
-## Barreiras
+## Controles
 
-- Allowlist do fork e do original conhecido. Default: felipevrds. FernandoGreco
-  requer INFRA_DEPLOY_REPOSITORY explícito.
-- Required reviewers, sem bypass administrativo e política custom com apenas
-  homolog ou main verificados antes do Plan para aprovação e depois da aprovação.
-- STS confirma a conta antes do Plan e após espera; credenciais Academy expiram.
-- AES-256-GCM/scrypt, integridade e contexto: commit, run, tentativa, conta, região,
-  repositório, ambiente, bucket e chave do state. Não é possível usar plano de
-  homolog em produção. Artefato retido por um dia; plano válido por quatro horas.
-- Exclusões, substituições e ações desconhecidas são bloqueadas.
-- Atualizações EC2 user_data/user_data_base64, inclusive valores desconhecidos/
-  removidos, são bloqueadas.
-- Atualizações disruptivas também são bloqueadas: ami, instance_type, subnet_id,
-  availability_zone, key_name, root_block_device, vpc_security_group_ids,
+- Allowlist de repositórios conhecidos; adaptação do destino exige configuração
+  explícita. Não há wildcard para repositórios arbitrários.
+- Required reviewers, sem bypass administrativo e política custom com somente
+  homolog ou main conferidos antes de preparar artefato e após aprovação.
+- Conta AWS confirmada por STS antes do Plan e após espera pela aprovação.
+- Plano criptografado AES-256-GCM/scrypt com integridade e contexto de commit,
+  run/tentativa, conta, região, repositório, ambiente, bucket e chave do state.
+- Artefato retido por um dia; plano válido por quatro horas.
+- Exclusões, substituições e ações desconhecidas bloqueadas.
+- Atualizações EC2 user_data/user_data_base64 bloqueadas, inclusive valores
+  desconhecidos/removidos.
+- Mudanças disruptivas bloqueadas: ami, instance_type, subnet_id,
+  availability_zone, key_name, root_block_device, vpc_security_group_ids e
   source_dest_check.
-- Criação inicial e tags continuam permitidas, sob aprovação.
-- As duas EC2 têm ignore_changes de user_data. Alterações futuras de bootstrap
-  não se propagam automaticamente. Most_recent da AMI foi mantido; mudanças que
-  proponham substituição continuam bloqueadas.
-- Apply nunca gera novo plano. Logs privados não são publicados; o resumo mostra
-  ações e nomes dos campos sem valores. Arquivos privados são removidos do runner.
+- Criação inicial e tags permitidas, sob aprovação.
+- Ignore_changes de user_data nas duas EC2; bootstrap novo não é propagado
+  automaticamente às instâncias existentes.
+- Most_recent da AMI mantido; uma substituição proposta continua bloqueada.
+- Apply não replaneja. Logs privados não são publicados; resumo mostra ações e
+  nomes de campos, sem valores. Arquivos privados são removidos do runner.
 
-Essas barreiras não cobrem qualquer impacto possível. Revisar também mudanças de
-rede permitidas. Não há garantia de que um Apply nunca altere SG. O workflow não
-chama deploy.sh, join, Helm ou deploy NestJS.
+Revisar também mudanças de rede permitidas pelo plano. O workflow não garante
+ausência de qualquer impacto em SG e não executa join, Helm ou deploy NestJS.
 
-## Configuração externa e credenciais
+## Configuração e reprodução
 
-A tabela completa está no
-[guia de reprodução](../GUIA-EXECUCAO.md#reprodução-em-outra-conta-aws-e-configuração-do-github-actions).
-Secrets Repository/Organization podem ser herdados quando permitido. Environments
-não herdam secrets uns dos outros; Plan/Apply precisam resolver credenciais e
-backend coerentes. TFVARS só é necessário no Plan.
-A chave de criptografia deve coincidir no par; pode ser distinta entre ambientes.
+O [guia de execução](../GUIA-EXECUCAO.md#reprodução-em-outra-conta-aws-e-configuração-do-github-actions)
+define Environments, secrets, variables, proteção de branches e seleção de conta.
+Secrets Repository/Organization podem ser herdados quando a política permitir;
+Environments não herdam secrets entre si. Plan/Apply devem resolver valores
+coerentes. TFVARS é necessário somente no Plan, e a chave de criptografia deve
+coincidir dentro de cada par.
 
-Sem capacidade para outra infraestrutura, manter produção bloqueada e decidir
-isolamento com o responsável pelo Lab. State novo não adota as EC2 de homolog.
-Não existe destruição automática para liberar quota.
+State novo não adota as EC2 de outro ambiente. Sem capacidade para coexistência,
+manter produção bloqueada e definir isolamento. Não existe destruição automática
+para liberar quota.
 
-## CI e evidências
+## Validação e evidências
 
-CI valida Terraform nos dois diretórios sem backend, todos os Bash por arquivo,
-PowerShell AST, testes Node, actionlint, kubeconform e Helm. ShellCheck não está
-habilitado. Native schemas Kubernetes 1.34 são strict; Alloy e CRD são skips
-explícitos. Não é teste real de admissão.
+CI valida os dois diretórios Terraform sem backend, Bash por arquivo, PowerShell
+AST, testes Node, actionlint, kubeconform e Helm.
+ShellCheck não está habilitado. Os schemas nativos Kubernetes 1.34 são strict;
+Alloy e sua CRD são skips explícitos. Não é teste real de admissão.
 
-- [Testes locais atuais](VALIDACAO-LOCAL-CICD.md).
-- [CI real histórico](../evidencias/2026-10-27-ci-github-feature.md).
-- [Índice de evidências](../evidencias/INDEX.md).
-- [ADR de ambientes](ADR-002-CICD-AMBIENTES.md).
+O registro de [CI/CD](../evidencias/CI-CD.md) distingue execuções documentadas,
+testes locais, controles do código e confirmação manual.
+Produção preparada não comprova infraestrutura de produção operacional.
 
-Produção preparada não equivale a infraestrutura/cluster de produção provisionado.
-A evidência final informada de Apply em homolog possui origem identificada no índice.
+[ADR](ADR-002-CICD-AMBIENTES.md) · [Evidências](../evidencias/INDEX.md)

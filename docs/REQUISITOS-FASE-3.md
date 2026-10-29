@@ -1,30 +1,26 @@
-# Matriz de requisitos — Fase 3
+# Rastreabilidade dos requisitos — Fase 3
 
-Fonte: enunciado oficial transcrito pelo responsável na conversa.
-O PDF docs/requisitos/tech-challenge-fase-3.pdf não está disponível localmente.
-Não foram presumidos requisitos além da transcrição.
+Base: enunciado da Fase 3 disponibilizado pelo responsável.
+A matriz relaciona requisitos, implementação e alcance das evidências, sem
+atribuir ao repositório de infraestrutura funcionalidades de outros serviços.
 
-| Requisito | Situação sustentada/documentação | Responsabilidade |
+| Requisito | Implementação ou comprovação deste repositório | Escopo complementar |
 | --- | --- | --- |
-| Kubernetes/Terraform | kubeadm/EC2 demonstrados; states independentes preparados | Infra |
-| Escalabilidade | Sintético comprovado; API 1→2 informada pelo responsável | Infra/aplicação |
-| CI/CD homolog | Implementado; histórico e declaração de Apply registrados | Infra |
-| CI/CD produção | Implementado/testado localmente; sem execução remota nesta etapa | Infra/GitHub |
-| Aplicação em Kubernetes | Demo NestJS com PostgreSQL efêmero comprovada | Infra/fork aplicação |
-| Deploy automático da aplicação | Terraform workflow não implanta NestJS | Equipe aplicação |
-| Banco gerenciado | PostgreSQL emptyDir não atende | Equipe banco |
-| Gateway e CPF/Lambda/JWT | Não comprovados por demo interna/HTTP 401 | Autenticação/aplicação |
-| CPU/memória Kubernetes | Métricas locais e Cloud comprovadas | Infra |
-| Logs/eventos Cloud | Confirmações manuais; leitura API limitada por scope | Infra |
-| Latência/healthchecks/uptime | Readiness/Swagger testados; completar visão integrada de API | Aplicação/observabilidade |
-| JSON/correlação/traces | Não comprovados integralmente; smoke JSON não prova logs da API estruturados | Aplicação |
-| Dashboards/alertas de negócio | Não comprovados neste repositório | Aplicação/observabilidade |
-| Diagramas/RFCs/ADRs/modelagem do banco | Infra/ADRs locais; consolidar material do grupo | Todos |
-| Quatro repos, PR/proteção e README/deploys | Consolidar links/configuração de cada repo | Todos |
-| Vídeo até 15 minutos/PDF único | Segmento individual informado como gravado; consolidar entrega | Todos |
-| Acesso soat-architecture | Confirmar em cada repo | Proprietários |
+| Kubernetes e Terraform | kubeadm/EC2 demonstrados; states independentes | Operação de produção requer configuração/evidência próprias |
+| Escalabilidade | HPA sintético observado; HPA API com confirmação manual identificada | Não equivale a autoscaling de EC2 ou benchmark independente |
+| CI/CD homolog/produção | Workflow com CI, Plan salvo e aprovação protegida | Execução remota de produção não comprovada pelo catálogo |
+| Aplicação em Kubernetes | NestJS e PostgreSQL efêmero demonstrados | Pipeline da aplicação é mantido em seu repositório |
+| Banco gerenciado | PostgreSQL emptyDir não atende a esse requisito | Repositório de banco gerenciado |
+| Gateway e CPF/Lambda/JWT | Não comprovados por Swagger ou resposta HTTP 401 isolada | Autenticação/Gateway/aplicação |
+| CPU/memória Kubernetes | Métricas locais e Cloud comprovadas | Métricas de latência de API dependem de instrumentação |
+| Logs/eventos Cloud | Confirmações manuais e métricas de recursos documentadas | JSON/correlação/traces não comprovados integralmente |
+| Alertas e dashboards de negócio | Não comprovados pelas evidências de infraestrutura | Indicadores e falhas de processamento de ordens de serviço |
+| Arquitetura/RFCs/ADRs/modelagem do banco | Componentes e ADRs de infraestrutura documentados | Diagramas de sequência, RFCs e modelagem/justificativa do banco |
+| Quatro repositórios, proteção e deploy | Operação e configuração deste repositório descritas | Conferência dos demais repositórios |
+| Entrega acadêmica | Documentação e evidências deste componente | PDF único com links, vídeo até 15 minutos e acesso soat-architecture em cada repositório |
 
-Descrever início automático com aprovação humana, sem alegar deploy totalmente
-automático. Produção preparada não equivale a produção provisionada.
+O fluxo inicia automaticamente e mantém aprovação humana antes do Apply.
+O catálogo distingue código implementado, consulta registrada e confirmação
+manual; produção preparada não é declarada como cluster provisionado.
 
-[Evidências](../evidencias/INDEX.md) · [README](../README.md)
+[Arquitetura](ARQUITETURA-INFRA.md) · [Evidências](../evidencias/INDEX.md) · [README](../README.md)

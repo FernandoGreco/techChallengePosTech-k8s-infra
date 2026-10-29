@@ -1,37 +1,46 @@
-# Índice de evidências
+# Evidências técnicas
 
-Fotografias datadas, não garantia de estado atual. Originais preservados.
-Não publicar states, planos, logs privados ou credenciais.
+Cada registro identifica seu alcance e a data de coleta/confirmação.
+Uma observação histórica não garante o estado atual do ambiente.
+Confirmações manuais não são apresentadas como resultados automatizados.
 
-| Registro | Comprovação e alcance |
+## Infraestrutura e Kubernetes
+
+| Arquivo | Comprovação |
 | --- | --- |
-| [Kubernetes/HPA](2026-10-27-kubernetes-hpa.txt) | Nós, CNI/métricas e sintético 1→4→1; não API |
-| [Metrics](2026-10-27-metrics-idempotencia.txt) | Reexecução autorizada com spec preservada |
-| [Grafana preflight](2026-10-27-grafana-preflight.md) | Capacidade antes da instalação; histórico |
-| [Grafana plano](2026-10-27-grafana-plano.txt) | Preparação; hash/Fleet não representam values final |
-| [Grafana cluster](2026-10-27-grafana-cluster.txt) | Saúde/consumo dos agentes |
-| [Grafana API](2026-10-27-grafana-cloud-api.json) | Métricas; 401 Loki não indica falha de envio |
-| [Grafana fontes](2026-10-27-grafana-fontes.json) | Leitura de arquivos; não prova isolada de chegada |
-| [Grafana envio](2026-10-27-grafana-envio.json) | Aceitação Loki HTTP 204 e contadores |
-| [Grafana RBAC](2026-10-27-grafana-rbac.txt) | Verificações seletivas, não auditoria completa |
-| [Grafana smoke](2026-10-27-grafana-smoke.txt) | Marcador/eventos; não logs JSON de negócio |
-| [Grafana manual](2026-10-27-grafana-validacao-manual.md) | Logs/74 eventos confirmados pelo usuário |
-| [CI local antigo](2026-10-27-cicd-local.md) | Quatro testes da versão anterior |
-| [CI real](2026-10-27-ci-github-feature.md) | Falha lockfile/correção/CI aprovado |
-| [Deploy](tc3-deploy-kubernetes-validacao.txt) | Pods/Jobs/eventos; v1/v2 falhas históricas, v3 Complete |
-| [Resultado API](tc3-deploy-resultado-local.json) | Schema/Swagger/API e HPA configurado, sem carga nessa consulta |
-| [Cloud API](tc3-deploy-observabilidade-local.json) | Séries CPU/memória; readiness sem série nessa consulta |
-| [Loki API](tc3-deploy-loki-confirmacao-manual-local.json) | Confirmação manual, sem screenshot |
-| [Resultados finais](2026-10-28-resultados-informados.md) | HPA 1→2/9.986 HTTP e Apply sem alterações: declaração identificada |
-| [Testes atuais](../docs/VALIDACAO-LOCAL-CICD.md) | Fluxo homolog/main local, sem operações remotas |
+| [Kubernetes/HPA](2026-10-27-kubernetes-hpa.txt) | Nós Ready, Calico, Metrics Server e laboratório sintético 1→4→1 |
+| [Idempotência Metrics Server](2026-10-27-metrics-idempotencia.txt) | Spec preservada após reexecução autorizada e API disponível |
+| [Implantação da aplicação](tc3-deploy-resultado-local.json) | Identidade/região registradas, nós, schema, NestJS, Swagger e PostgreSQL temporário |
+| [HPA da aplicação](HPA-APLICACAO.md) | Configuração 1–2 e resultado de carga com origem manual identificada |
 
-Versionar os registros técnicos sanitizados selecionados e este índice.
-Rascunhos podem permanecer locais se não ajudarem a avaliação; não apagá-los.
-Topologia/identidade em logs pode exigir cópia sanitizada identificada, preservando
-a fonte. Não alterar arquivos antigos para simular testes posteriores.
+O PostgreSQL demonstrado usa emptyDir, não RDS. HPA escala Pods, não EC2.
 
-A cópia publicável do terminal Kubernetes foi derivada do registro local original,
-preservado no workspace. Apenas BOM, finais de linha e espaços ao fim das linhas
-foram normalizados; estados, eventos e resultados não foram alterados.
+## Observabilidade
 
-[README](../README.md) · [Status](../docs/STATUS-INFRA.md)
+| Arquivo | Comprovação |
+| --- | --- |
+| [Agentes no cluster](2026-10-27-grafana-cluster.txt) | Saúde e consumo instantâneo de Alloy/componentes |
+| [API Cloud](2026-10-27-grafana-cloud-api.json) | Métricas de nós/Pods recentes recebidas |
+| [Permissões](2026-10-27-grafana-rbac.txt) | Verificações seletivas de RBAC |
+| [Logs/eventos](2026-10-27-grafana-validacao-manual.md) | Confirmação manual de logs e eventos no Loki |
+| [Métricas da API](tc3-deploy-observabilidade-local.json) | Séries CPU/memória da aplicação; readiness sem série nessa consulta |
+| [Logs da API](tc3-deploy-loki-confirmacao-manual-local.json) | Logs NestJS recentes confirmados manualmente no destino, sem captura |
+
+Respostas 401 de leitura por scope insuficiente permanecem registradas e não
+invalidam por si só o envio de dados. Traces não foram comprovados.
+O marcador de teste não comprova JSON/correlação de logs de negócio.
+
+## CI/CD
+
+[CI-CD.md](CI-CD.md) apresenta referências de execuções documentadas, os controles
+de aprovação protegida e a distinção entre testes locais e confirmação manual
+do Apply. Não declara execução remota de produção.
+
+## Integridade e privacidade
+
+Datas, versões, digest da imagem e identificadores que contextualizam as coletas
+são metadados técnicos, não credenciais. Não publicar tokens, tfvars reais,
+kubeconfig, chaves, state ou planos. Os originais dos registros consolidados são
+preservados localmente; não são dependências da reprodução.
+
+[README](../README.md) · [Arquitetura](../docs/ARQUITETURA-INFRA.md)
