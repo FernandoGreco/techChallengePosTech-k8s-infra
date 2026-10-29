@@ -1,0 +1,30 @@
+﻿{
+    "checked_utc":  "2026-10-28T00:31:36.7595417Z",
+    "checks":  [
+                   {
+                       "check":  "app_cpu_series",
+                       "http":  200,
+                       "value":  "1"
+                   },
+                   {
+                       "check":  "app_memory_series",
+                       "http":  200,
+                       "value":  "1"
+                   },
+                   {
+                       "check":  "app_ready",
+                       "http":  200,
+                       "value":  null
+                   },
+                   {
+                       "check":  "latest_app_metric",
+                       "http":  200,
+                       "value":  "1793147457.202"
+                   },
+                   {
+                       "check":  "app_logs_cloud",
+                       "http":  401,
+                       "category":  "missing_read_scope"
+                   }
+               ]
+}

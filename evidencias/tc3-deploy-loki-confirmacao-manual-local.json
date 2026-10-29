@@ -1,0 +1,10 @@
+{
+  "confirmed_utc": "2026-10-28T00:36:02.043Z",
+  "source": "user_manual_confirmation",
+  "destination": "Grafana Cloud Explore Loki",
+  "time_range": "last 15 minutes",
+  "query": "{cluster=\"kubernetes-admin-kubernetes\", namespace=\"oficina-tc3\", container=\"api\"}",
+  "recent_nestjs_logs_visible": true,
+  "automatic_loki_read_still_limited": true,
+  "screenshot_collected": false
+}

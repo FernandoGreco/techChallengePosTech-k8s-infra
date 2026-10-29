@@ -1,251 +1,157 @@
-# Tech Challenge FIAP — Infraestrutura Kubernetes na AWS
+# Tech Challenge FIAP — Fase 3 | Infraestrutura Kubernetes
 
 ## 1. Objetivo
 
-Provisionar a infraestrutura necessária para executar a aplicação de oficina mecânica do Tech Challenge da FIAP em um cluster Kubernetes na AWS.
+Provisionar e operar Kubernetes com Terraform no AWS Academy Learner Lab.
+O cluster utiliza **kubeadm em duas EC2 Ubuntu, sem EKS**, com containerd, Calico,
+Metrics Server e Grafana Cloud/Alloy.
 
-A infraestrutura é definida utilizando Terraform e utiliza recursos disponíveis no ambiente AWS Academy Learner Lab.
+A aplicação NestJS foi demonstrada com PostgreSQL temporário em namespace
+exclusivo, sem utilizar o banco compartilhado da equipe.
 
 ## 2. Arquitetura
 
-A solução utiliza Kubernetes autogerenciado em instâncias Amazon EC2, sem utilização do Amazon EKS.
-
-**Componentes:**
-
-- AWS VPC existente no laboratório.
-- Duas instâncias EC2 Ubuntu 24.04.
-- Control Plane Kubernetes, responsável pelo gerenciamento do cluster.
-- Worker Node, responsável pela execução das aplicações.
-- Security Group para comunicação interna entre os nós.
-- Containerd como runtime de containers.
-- Kubeadm para inicialização e associação dos nós.
-- Calico como plugin de rede (CNI).
-- Terraform para provisionamento da infraestrutura.
-- GitHub Actions para validação contínua.
-
-A arquitetura inicial utiliza duas instâncias `t3.medium`, com volumes EBS `gp3` de 20 GiB cada.
-
-## 3. Estrutura do repositório
-
-```text
-.github/
-  workflows/
-    terraform-validate.yml
-
-environments/
-  homolog/
-    main.tf
-    variables.tf
-    outputs.tf
-    providers.tf
-    versions.tf
-
-  prod/
-
-modules/
-  ec2/
-    main.tf
-    variables.tf
-    outputs.tf
-    user-data/
-      install-k8s.sh
-      init-control-plane.sh
-      install-cni.sh
-      join-worker.sh
-      control-plane.sh.tftpl
-      worker.sh.tftpl
-
-  network/
-  security/
-
-README.md
+```mermaid
+flowchart TB
+  H["Push homolog"] --> CI["CI reutilizável"]
+  M["Push main: produção habilitada"] --> CI
+  CI --> P["Plan salvo e resumo sanitizado"]
+  P --> A["Aprovação humana no Environment"]
+  A --> AP["Apply do mesmo plano criptografado"]
+  AP --> S3["S3: states homolog/ e production/ separados"]
+  AP --> AWS["AWS Academy: VPC/subnet e Key Pair existentes"]
+  subgraph K8S["Cluster de demonstração — kubeadm"]
+    CP["EC2 Control Plane"] --> WK["EC2 Worker"]
+    WK --> API["NestJS — ClusterIP"]
+    API --> PG["PostgreSQL temporário — emptyDir"]
+    MS["Metrics Server"] --> HPA["HPA da API: 1–2 Pods"]
+    HPA --> API
+    AL["Alloy por nó"]
+  end
+  AWS --> CP
+  AWS --> WK
+  GHCR["GHCR: imagem por digest"] --> API
+  LOCAL["Swagger via túnel localhost"] --> API
+  CP --> AL
+  WK --> AL
+  AL --> GC["Grafana Cloud: métricas, logs e eventos"]
 ```
 
-O ambiente `homolog` é o foco da implementação atual. A existência de diretórios para outros ambientes ou módulos não significa que estejam implementados.
+O diagrama representa o fluxo Terraform e os componentes demonstrados.
+O workflow Terraform não implanta NestJS nem executa join do Worker.
+Control Plane e Worker únicos são pontos de falha; HPA aumenta Pods, não EC2.
+Produção possui configuração independente e não é representada como cluster
+operacional pelas evidências da demonstração.
 
-## 4. Pré-requisitos
+## 3. Tecnologias
 
-- Terraform compatível com a configuração do projeto.
-- AWS CLI configurado com credenciais válidas.
-- Git.
-- Acesso ao AWS Academy Learner Lab.
-- Permissões AWS para consultar a rede e provisionar os recursos necessários.
+| Camada | Implementação |
+| --- | --- |
+| Infraestrutura | Terraform 1.16.5; AWS provider 6.68.0 no lockfile |
+| AWS | EC2 t3.medium, gp3 de 20 GB, Security Group, state S3 com lock |
+| Kubernetes | kubeadm 1.34, Ubuntu 24.04, containerd, Calico 3.30.3 |
+| Escalabilidade | Metrics Server 0.8.0, HPA autoscaling/v2 |
+| Observabilidade | Grafana Cloud, Alloy, Helm 3.22.1, chart 4.5.5 |
+| CI | Node 22, actionlint, kubeconform, Helm lint/template |
+| Aplicação demonstrada | NestJS/Prisma e PostgreSQL efêmero |
 
-As credenciais do AWS Academy podem mudar a cada inicialização do laboratório.
+## 4. Documentação
 
-**Nunca adicionar credenciais, tokens ou arquivos de estado Terraform ao Git.**
+| Documento | Conteúdo |
+| --- | --- |
+| [COMECE-AQUI](COMECE-AQUI.md) | Início rápido |
+| [GUIA-EXECUCAO](GUIA-EXECUCAO.md) | Operação e reprodução em outra conta |
+| [Arquitetura](docs/ARQUITETURA-INFRA.md) | Componentes e responsabilidades |
+| [CI/CD](docs/CICD-HOMOLOG.md) | Homologação, produção e aprovações |
+| [ADRs e requisitos](docs/INDEX.md) | Decisões e rastreabilidade |
+| [Grafana Cloud](observability/PLANO-GRAFANA.md) | Configuração Lightweight |
+| [Evidências](evidencias/INDEX.md) | Resultados, fontes e alcance |
 
-## 5. Configuração do Terraform
+Terraform fica em environments/homolog/, environments/production/ e modules/.
+Scripts operacionais e testes ficam em scripts/ e tests/.
 
-Acessar o diretório:
+## 5. CI/CD
+
+| Branch | Environment Plan | Aprovação Apply | State |
+| --- | --- | --- | --- |
+| homolog | homolog | homolog-apply | homolog/terraform.tfstate |
+| main | production | production-apply | production/terraform.tfstate |
+
+Push/merge inicia CI, Terraform Validate e Plan salvo. Apply exige **aprovação
+humana obrigatória**. Produção também exige a variável de repositório
+PRODUCTION_CAPACITY_APPROVED=true, após avaliação de capacidade/custos:
+o Lab não é presumido capaz de manter dois clusters simultâneos.
+
+O Apply utiliza o plano salvo da mesma execução, criptografado com AES-256-GCM.
+Integridade, validade de quatro horas e contexto de conta, região, commit,
+run/tentativa, repositório, ambiente, bucket e chave do state são verificados.
+As credenciais temporárias são revalidadas após a espera pela aprovação.
+
+O guard bloqueia exclusões, substituições, alterações de user-data e mudanças
+disruptivas de EC2. As instâncias ignoram alterações de user_data. Outras mudanças
+permitidas permanecem sujeitas à revisão do plano. O início é automático;
+**Apply não é executado automaticamente sem aprovação humana**.
+
+A autorização do repositório é explícita e limitada aos destinos conhecidos.
+Consulte a [configuração de reprodução](GUIA-EXECUCAO.md#reprodução-em-outra-conta-aws-e-configuração-do-github-actions)
+e o [registro de CI/CD](evidencias/CI-CD.md).
+
+## 6. Execução
+
+Pré-requisitos: Git Bash/SSH, AWS CLI e Terraform. Credenciais e chave SSH ficam
+fora do Git. Validação local:
 
 ```bash
-cd environments/homolog
+node --test tests/cicd-guards.test.mjs
+terraform fmt -check -recursive environments modules
+find scripts modules/ec2/user-data tests observability -name '*.sh' -type f -print0 | xargs -0 -r -n 1 bash -n
 ```
 
-Configurar o arquivo local `terraform.tfvars` com os identificadores do ambiente:
+Init/validate sem backend e os demais procedimentos estão no
+[guia de execução](GUIA-EXECUCAO.md). Provisionamento, bootstrap, carga e limpeza
+são operações distintas, autorizadas separadamente.
 
-```hcl
-aws_region = "us-east-1"
+## 7. Aplicação e HPA
 
-vpc_id = "ID_DA_VPC"
+Os [manifests da aplicação](https://github.com/felipevrds/techChallengePosTech-Aplication/tree/feature/deploy-kubernetes/k8s/homolog)
+utilizam imagem por digest, Service ClusterIP e startup node dist/main.js.
+Um Job separado preparou dez tabelas sem seed.
+O PostgreSQL usa emptyDir: pode perder dados ao substituir o Pod e **não é RDS**.
 
-subnet_ids = [
-  "ID_DA_SUBNET_1",
-  "ID_DA_SUBNET_2"
-]
-```
+O Swagger foi validado em http://127.0.0.1:18080/api/docs, com túnel ativo.
+Não é endpoint público permanente. Veja [como acessar](GUIA-EXECUCAO.md#acesso-local-ao-swagger).
 
-Os valores devem corresponder aos recursos existentes na conta AWS utilizada.
+- HPA sintético: CPU alvo 50%, 1–4 réplicas, escala observada 1→4→1.
+- HPA da API: CPU alvo 70%, 1–2 réplicas. A confirmação manual do responsável
+  registra escala 1→2, 9.986 respostas HTTP bem-sucedidas e zero erros.
+  O gerador rodou dentro do Pod: **não constitui benchmark independente**.
 
-## 6. Validação local
+As fontes e limitações estão na [evidência HPA da aplicação](evidencias/HPA-APLICACAO.md).
 
-Inicializar o Terraform:
+## 8. Observabilidade e comprovações
 
-```bash
-terraform init
-```
+Alloy coleta métricas de cluster/nós/pods, logs e eventos Kubernetes.
+A configuração Lightweight usa seis Pods permanentes, sem servidores locais
+Grafana/Prometheus/Loki. Os values referenciam Secret existente, sem credenciais.
 
-Verificar a formatação:
+| Comprovação | Registro |
+| --- | --- |
+| Nós, Calico, Metrics Server e HPA sintético | [Kubernetes/HPA](evidencias/2026-10-27-kubernetes-hpa.txt) |
+| Idempotência Metrics Server | [Comparação](evidencias/2026-10-27-metrics-idempotencia.txt) |
+| Saúde dos coletores | [Grafana no cluster](evidencias/2026-10-27-grafana-cluster.txt) |
+| Métricas recebidas no Cloud | [API](evidencias/2026-10-27-grafana-cloud-api.json) |
+| Logs/eventos, confirmação manual | [Loki](evidencias/2026-10-27-grafana-validacao-manual.md) |
+| NestJS, schema e PostgreSQL | [Aplicação](evidencias/tc3-deploy-resultado-local.json) |
+| Logs NestJS, confirmação manual | [Loki da API](evidencias/tc3-deploy-loki-confirmacao-manual-local.json) |
+| CI e aprovação protegida | [CI/CD](evidencias/CI-CD.md) |
 
-```bash
-terraform fmt -check -recursive
-```
+Traces não estão incluídos nas validações comprovadas.
+O [índice de evidências](evidencias/INDEX.md) distingue consultas automatizadas,
+confirmações manuais e controles verificados no código.
 
-Validar a configuração:
+## 9. Segurança
 
-```bash
-terraform validate
-```
-
-Validar a sintaxe dos scripts:
-
-```bash
-bash -n ../../modules/ec2/user-data/install-k8s.sh
-bash -n ../../modules/ec2/user-data/init-control-plane.sh
-bash -n ../../modules/ec2/user-data/install-cni.sh
-bash -n ../../modules/ec2/user-data/join-worker.sh
-```
-
-Esses comandos não criam recursos na AWS e não comprovam que o cluster funcionará após a implantação.
-
-## 7. Provisionamento da infraestrutura
-
-Com as credenciais AWS válidas e após verificar as permissões, a conectividade e o orçamento:
-
-```bash
-terraform plan -out=tfplan
-```
-
-Revisar os recursos planejados antes de aplicar:
-
-```bash
-terraform apply tfplan
-```
-
-Consultar os outputs:
-
-```bash
-terraform output
-```
-
-O provisionamento depende das permissões disponíveis no AWS Academy Learner Lab.
-
-## 8. Inicialização do Kubernetes
-
-O Terraform utiliza `user_data` para preparar as instâncias.
-
-**Control Plane:**
-
-1. Instala containerd e os componentes Kubernetes.
-2. Executa `kubeadm init`.
-3. Configura o acesso administrativo ao cluster.
-4. Aplica o manifesto do Calico.
-5. Aguarda a inicialização dos componentes de rede.
-
-**Worker:**
-
-1. Instala containerd e os componentes Kubernetes.
-2. Prepara o ambiente para associação ao cluster.
-3. Aguarda a execução do `kubeadm join`.
-
-Na implementação atual, a associação do Worker é manual.
-
-## 9. Associação do Worker
-
-Após a inicialização do Control Plane, gerar o comando de associação diretamente na instância:
-
-```bash
-sudo kubeadm token create --print-join-command
-```
-
-Executar o comando gerado no Worker por meio de uma sessão administrativa segura.
-
-Não armazenar o token no repositório, nos arquivos Terraform ou em mensagens compartilhadas.
-
-## 10. Validação do cluster
-
-No Control Plane:
-
-```bash
-sudo KUBECONFIG=/etc/kubernetes/admin.conf kubectl get nodes -o wide
-```
-
-Consultar os pods do sistema:
-
-```bash
-sudo KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -n kube-system
-```
-
-O resultado esperado é que Control Plane e Worker estejam no estado `Ready`, após a instalação e configuração correta da rede.
-
-## 11. Integração contínua
-
-O GitHub Actions executa o workflow `Terraform Validate`.
-
-As verificações incluem:
-
-- Formatação Terraform.
-- Inicialização sem backend remoto.
-- Validação da configuração Terraform.
-- Verificação de sintaxe dos scripts Bash.
-
-A execução bem-sucedida do workflow não representa implantação na AWS.
-
-A automação de implantação (CD) ainda não foi implementada neste repositório.
-
-## 12. Limitações e pendências
-
-Antes de considerar a infraestrutura operacional, ainda é necessário:
-
-- Confirmar permissões e disponibilidade de recursos na AWS Academy.
-- Validar as rotas da subnet e o acesso à internet.
-- Definir o método seguro de acesso às EC2.
-- Confirmar a compatibilidade entre Kubernetes e Calico.
-- Verificar os CIDRs da VPC e da rede dos pods.
-- Executar o provisionamento real.
-- Inicializar o cluster e associar o Worker.
-- Registrar evidências de funcionamento.
-- Integrar o deploy da aplicação e a automação CD.
-
-## 13. Destruição da infraestrutura
-
-Após a conclusão dos testes, revisar o plano de destruição:
-
-```bash
-terraform plan -destroy
-```
-
-Se os recursos não forem mais necessários:
-
-```bash
-terraform destroy
-```
-
-Executar a destruição somente após confirmar que não existem dependências ou atividades de outros integrantes.
-
-## 14. Projeto acadêmico
-
-Infraestrutura desenvolvida como parte do Tech Challenge — Fase 3, Pós-Tech FIAP.
-
-**Status atual:** estrutura Terraform e scripts preparados, validação local e GitHub Actions funcionando. Provisionamento e testes na AWS pendentes.
+Não versionar credenciais, PATs, .env, chaves, kubeconfig administrativo, tfvars,
+state ou planos. Validar host keys SSH por canal confiável.
+Scripts de provisionamento/carga/limpeza não são diagnósticos de leitura.
+Limpeza tem escopo e autorização próprios e não faz parte dos workflows.
