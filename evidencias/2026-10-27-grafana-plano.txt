@@ -1,0 +1,13 @@
+﻿Grafana Cloud Lightweight: preparação offline, sem instalação no cluster
+Helm portátil local: 3.22.1, arquivo oficial verificado por SHA256
+Chart: k8s-monitoring 4.5.5
+helm lint: passou
+helm template --kube-version 1.34.12 --include-crds: passou
+Verificação do token literal em values/plano/renderização: ausente
+Secrets renderizados pelo chart: 0
+Valores referenciam Secret existente; nenhum token passado ao Helm
+Seis pods permanentes estimados: dois Alloy, dois Node Exporter, kube-state-metrics e Alloy Operator
+Requests totais, incluindo reloaders: 330m CPU / 480Mi memória
+Soma dos limites: 1700m CPU / 1536Mi memória
+Sinais remotos Fleet: aguardam confirmação do usuário no Grafana Cloud
+SHA256 values: F7528B22AF89888F9B695F3159FBB1BEAE49826C704357A337B748BFE7283A29

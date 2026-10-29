@@ -1,50 +1,243 @@
-# Guia de execucao e limites de validacao
+# Guia de execução — infraestrutura Kubernetes
 
-## Situacao
+## Ambientes
 
-- CI: `terraform-validate.yml` valida Terraform e scripts em PRs e branches configuradas.
-- CD: `terraform-deploy.yml` executa na branch `homolog` (ou manualmente), usando `ubuntu-latest`.
-- `runner-smoke-test.yml` foi removido porque usava runner Windows self-hosted, nao mais necessario.
-- Estado remoto: S3 com `use_lockfile=true`, chave `homolog/terraform.tfstate`.
-- **Producao ainda nao implementada**. A pasta `environments/prod` esta vazia; nao executar como se fosse um ambiente pronto.
+Kubeadm em EC2 Ubuntu, sem EKS. Consultar o [status](docs/STATUS-INFRA.md) antes
+de operar um ambiente existente.
 
-## AWS Academy
+| Ambiente | Branch | Diretório | State S3 | Aprovação |
+| --- | --- | --- | --- | --- |
+| homolog | homolog | environments/homolog | homolog/terraform.tfstate | homolog-apply |
+| production | main | environments/production | production/terraform.tfstate | production-apply |
 
-1. Inicie o Learner Lab e obtenha novas credenciais temporarias.
-2. Confira conta e regiao `us-east-1`; confirme VPC, subnet publica, key pair e quotas.
-3. Crie o bucket S3 na conta (nome padrao `fiap-tc3-k8s-tfstate-<ACCOUNT_ID>`), com bloqueio publico, versionamento e criptografia.
-4. Confirme que nao ha recursos Terraform existentes fora do estado S3 antes de aplicar.
-5. As credenciais temporarias podem expirar durante a execucao; renove antes do teste.
+Não copiar o state, importar as mesmas EC2 nos dois ambientes ou tratar produção
+como migração do cluster existente. Compartilhar bucket é possível; compartilhar
+objeto de state não é. Usar workspace default e região us-east-1.
 
-## GitHub Environment `homolog`
+## Validação local sem provisionamento
 
-**Secrets:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `TFVARS_HOMOLOG`, `SSH_PRIVATE_KEY`.
-
-**Variables:** `AWS_ACCOUNT_ID` (12 digitos), `AUTO_APPROVE_DEPLOY` (`true` para permitir apply automatizado). Opcional `TF_BACKEND_BUCKET` (se o bucket nao seguir o padrao acima).
-
-Restrinja o Environment `homolog` a branch `homolog`. Antes de habilitar `AUTO_APPROVE_DEPLOY=true`, revise o plano e valide o custo e a configuracao. **Push na branch `homolog` pode criar ou alterar EC2 automaticamente.**
-
-O secret `TFVARS_HOMOLOG` contem as variaveis HCL do ambiente, incluindo `vpc_id`, `subnet_ids`, `ssh_key_name` e `ssh_allowed_cidr` (IP publico do operador em `/32`). `SSH_PRIVATE_KEY` deve corresponder ao key pair. Nao versionar esses valores.
-
-## Execucao local (Git Bash)
-
-Na raiz do repositorio, com AWS CLI autenticado:
+Com ferramentas instaladas, da raiz:
 
 ```bash
-export EXPECTED_AWS_ACCOUNT_ID="<ACCOUNT_ID>"
-export SSH_PRIVATE_KEY_PATH="/c/caminho/para/labsuser.pem"
-export SSH_USER="ubuntu"
-# Opcional: export TF_BACKEND_BUCKET="nome-do-bucket"
-bash scripts/deploy.sh
+node --test tests/cicd-guards.test.mjs
+terraform fmt -check -recursive environments modules
+find scripts modules/ec2/user-data tests observability -name '*.sh' -type f -print0 | xargs -0 -r -n 1 bash -n
+actionlint -shellcheck=
+validar_terraform_local() {
+  local target task_tf_data
+  for target in homolog production; do
+    task_tf_data="$(mktemp -d)" || return
+    TF_DATA_DIR="$task_tf_data" terraform -chdir="environments/$target" init -backend=false -input=false -lockfile=readonly || return
+    TF_DATA_DIR="$task_tf_data" terraform -chdir="environments/$target" validate -no-color || return
+  done
+}
+validar_terraform_local
 ```
 
-Criar antes `environments/homolog/accounts/<ACCOUNT_ID>.tfvars` localmente. O script mostra o plano e exige resposta `sim` antes de aplicar. Para verificar o cluster novamente: `bash scripts/validate-k8s.sh`. Para excluir os recursos gerenciados pelo estado remoto: `bash scripts/destroy.sh` (exige `DESTRUIR`).
+Init sem backend pode baixar providers, mas não usa state. CI também verifica
+PowerShell AST, manifests strict Kubernetes 1.34 e Helm lint/template; apenas
+Alloy e sua CRD são excluídos do catálogo. Não é validação de admissão real.
+Bash -n não equivale a ShellCheck.
+O retorno da função preserva o erro de init/validate e interrompe o processamento
+dos ambientes seguintes. Conferir o código de saída antes de continuar.
 
-## Limites e cuidados
+## Diagnóstico de leitura do cluster existente
 
-- O script de deploy conecta por SSH ao control plane e worker e executa kubeadm, Calico e Metrics Server. A validacao final ocorre antes de revogar o acesso SSH temporario do runner.
-- O Security Group ja possui regra SSH para `ssh_allowed_cidr`. GitHub Actions adiciona outra regra temporaria e tenta removê-la mesmo em caso de erro. Verifique manualmente o Security Group caso haja falha na revogacao.
-- `--kubelet-insecure-tls` no Metrics Server foi adotado apenas para laboratorio kubeadm. Para producao, configurar certificados de kubelet adequados.
-- A automacao **nao faz deploy da aplicacao NestJS**; isso pertence ao repositorio da aplicacao.
-- Nenhum deploy AWS real foi executado durante esta revisao. A instalacao completa e a compatibilidade com as politicas do Learner Lab precisam ser testadas na conta.
-- Para conta de outro integrante, crie um bucket S3 independente, atualize os secrets/vars do repositorio e valide o estado remoto antes do primeiro apply.
+Com chave SSH fora do Git, host atual e identidade verificada por canal confiável:
+
+```bash
+aws sts get-caller-identity --profile academy-tc3 --region us-east-1 --query Account --output text
+ssh -i "$SSH_PRIVATE_KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UpdateHostKeys=no -o ConnectTimeout=5 "ubuntu@$CONTROL_PLANE_HOST" 'bash -se' < scripts/check-k8s-readonly.sh
+```
+
+O segundo comando confere contexto, dois nós Ready, CNI/CoreDNS, Metrics Server e
+top. IP público pode mudar. validate-k8s.sh inicializa backend e usa accept-new;
+não é diagnóstico estrito de identidade. deploy.sh também mantém accept-new;
+revisar a política antes de utilizá-lo.
+
+## Reprodução em outra conta AWS e configuração do GitHub Actions
+
+### 1. Learner Lab e credenciais temporárias
+
+Iniciar Start no portal e aguardar Lab ativo. Em AWS Details/AWS CLI, obter
+access key, secret key e session token da mesma sessão. Configurar o perfil
+academy-tc3 no arquivo AWS de credenciais do próprio usuário, fora do Git, com
+acesso restrito, usando o formato fornecido pelo Academy. Renovar os três campos
+juntos; não colar valores em chat, argumentos, histórico ou vídeo.
+
+Confirmar conta por STS e região us-east-1. Conferir tempo restante no portal:
+STS não comprova a duração restante do Lab. Essa configuração externa é feita
+pelo usuário; o repositório não copia automaticamente credenciais para GitHub.
+
+### 2. Conta, VPC, subnets e Key Pair
+
+Consultas de leitura:
+
+```bash
+aws ec2 describe-vpcs --profile academy-tc3 --region us-east-1 --query 'Vpcs[].{Id:VpcId,Default:IsDefault}' --output table
+aws ec2 describe-subnets --profile academy-tc3 --region us-east-1 --query 'Subnets[].{Id:SubnetId,Vpc:VpcId,AZ:AvailabilityZone,PublicIP:MapPublicIpOnLaunch}' --output table
+aws ec2 describe-key-pairs --profile academy-tc3 --region us-east-1 --query 'KeyPairs[].KeyName' --output table
+```
+
+Conferir rotas/saída, VPC/subnet, Key Pair e posse da chave correspondente.
+Usar CIDR SSH restrito, preferencialmente /32. Não reutilizar IDs da conta de
+Felipe. Preparar tfvars privado a partir do exemplo do ambiente: aws_region,
+vpc_id, subnet_ids, ssh_key_name e ssh_allowed_cidr. As duas EC2 usam a primeira
+subnet. modules/network não é utilizado.
+
+### 3. Backend remoto
+
+Preparar o bucket da própria conta por ação externa autorizada antes do Plan.
+Ativar bloqueio público, criptografia e versionamento. Conceder acesso mínimo
+ao prefixo: ListBucket; GetObject/PutObject no state; GetObject/PutObject/
+DeleteObject no .tflock; permissões KMS se aplicáveis.
+
+Backend usa encrypt=true, use_lockfile=true, região us-east-1 e chaves distintas.
+O bucket padrão é fiap-tc3-k8s-tfstate-<ACCOUNT_ID>; TF_BACKEND_BUCKET o substitui.
+
+```bash
+aws s3api head-bucket --bucket "$TF_BACKEND_BUCKET" --profile academy-tc3 --region us-east-1
+aws s3api head-object --bucket "$TF_BACKEND_BUCKET" --key homolog/terraform.tfstate --profile academy-tc3 --region us-east-1 --query '{Bytes:ContentLength,Modified:LastModified}'
+```
+
+Em produção, usar production/terraform.tfstate; sua ausência pode ser normal
+antes do primeiro provisionamento. Não baixar conteúdo para demonstrar o state
+nem criar/remover locks manualmente. Plan com backend remoto usa lock S3:
+não é operação estritamente sem escrita.
+
+### 4. GitHub Environments, secrets e variables
+
+Criar homolog, homolog-apply, production e production-apply.
+
+| Configuração | homolog | homolog-apply | production | production-apply |
+| --- | --- | --- | --- | --- |
+| AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN | Secrets | Secrets | Secrets | Secrets |
+| TFVARS_HOMOLOG | Secret | Não usa | Não usa | Não usa |
+| TFVARS_PRODUCTION | Não usa | Não usa | Secret | Não usa |
+| TF_PLAN_ENCRYPTION_KEY | Secret | Igual ao Plan | Secret | Igual ao Plan |
+| AWS_ACCOUNT_ID | Variable | Mesma conta | Variable | Mesma conta |
+| TF_BACKEND_BUCKET | Variable recomendada | Mesmo bucket | Variable recomendada | Mesmo bucket |
+
+Gerar a chave aleatória de ao menos 32 caracteres em gestor seguro, sem exibir.
+Preferir uma chave por par Plan/Apply. Secrets de Repository/Organization podem
+ser herdados quando permitido; um Environment não herda secrets de outro.
+O job Apply não precisa de tfvars, pois aplica o plano salvo.
+O perfil local não autentica runners. OIDC não foi introduzido no Lab.
+
+Variables de **repositório**:
+
+- INFRA_DEPLOY_REPOSITORY: opcional no fork. No original, definir exatamente
+  FernandoGreco/techChallengePosTech-k8s-infra. O allowlist aceita somente o fork
+  e esse original; outros destinos exigem revisão de código e testes.
+- PRODUCTION_CAPACITY_APPROVED: manter ausente/false até revisar quotas, custos,
+  tempo de Lab e isolamento. Definir true apenas após decisão explícita.
+  Esse sinal não consulta automaticamente quotas AWS.
+
+State vazio de produção propõe recursos próprios. Preferir conta/Lab separado
+quando não houver capacidade de coexistência. Encerrar outro ambiente exige
+autorização independente: o pipeline não destrói homolog para liberar espaço.
+
+### 5. Branch protection e aprovação de Apply
+
+Proteger homolog/main: PR obrigatório, check Validate infrastructure, base
+atualizada, resolução de conversas, administradores incluídos, force-push e
+exclusão bloqueados. Confirmar o nome do check no run ao cadastrá-lo.
+
+Em homolog-apply/production-apply: required reviewers humanos, sem bypass
+administrativo e uma única política custom de branch: homolog/main,
+respectivamente. Restringir também o Environment de Plan à branch correspondente.
+Verificar suporte do plano GitHub; ausência de regras deve bloquear o guard.
+
+As regras são consultadas antes de preparar artefato e depois da aprovação.
+Aprovação de PR não substitui aprovação de Apply. Não configurar aprovação
+automática de deployments.
+
+### 6. Validar pipelines e executar com segurança
+
+1. Revisar arquivos/segredos e passar nos testes locais.
+2. Após autorização de publicação, validar CI real na feature/PR sem AWS.
+3. Configurar GitHub e renovar credenciais dos pares Plan/Apply.
+4. Dispatch action=plan na branch alvo executa somente Plan.
+5. Push/merge autorizado em homolog/main inicia CI, Plan e espera aprovação.
+6. Revisar conta, state, contagens e campos antes de aprovar o run/commit exato.
+7. O Apply usa somente o plano salvo; não replaneja. Credenciais expiradas,
+   state alterado ou plano com mais de quatro horas exigem execução completa
+   nova e nova revisão. Não reaproveitar artefato de outra tentativa.
+
+Dispatch validate é padrão e não acessa AWS. Dispatch apply exige APLICAR HOMOLOG
+ou APLICAR PRODUCTION e ainda depende da aprovação humana. A verificação SSH
+opcional permanece somente em homolog: SSH_PRIVATE_KEY, CONTROL_PLANE_HOST,
+SSH_KNOWN_HOSTS e rede previamente autorizada; não abre SG.
+
+O guard bloqueia exclusões, substituições, user_data/user_data_base64 e alterações
+disruptivas de EC2: AMI, tipo, subnet/AZ, Key Pair, disco raiz, SGs da instância e
+source_dest_check. Outras alterações, inclusive de rede permitidas pelo plano,
+ainda exigem revisão. Não existe garantia genérica de zero mudança em SG.
+
+### 7. EC2, cloud-init e Kubernetes
+
+Homologação nova pode usar scripts/deploy.sh, mutante e com confirmação sim:
+Terraform, cloud-init, join do Worker e Metrics Server. Requer AWS_PROFILE,
+AWS_REGION, EXPECTED_AWS_ACCOUNT_ID, SSH_PRIVATE_KEY_PATH e SSH_USER.
+O script é bloqueado em Actions e tem homolog hardcoded: **não usar em produção**.
+
+O workflow de produção prepara EC2/cloud-init. Associação do Worker e validação
+de Kubernetes exigem etapa operacional revisada e autorizada separadamente.
+Apply inicial sozinho não comprova cluster de produção Ready.
+Verificar EC2/checks, cloud-init, kubelet/containerd, join, Calico, Metrics Server,
+top, HPA e telemetria. Não repetir provisionamento no cluster operacional.
+
+### 8. Limpeza ao final
+
+Salvar evidências sanitizadas. Identificar conta, ambiente, state, recursos
+exclusivos e dependências. Encerrar somente cargas/túneis do próprio teste.
+emptyDir pode perder dados ao remover/substituir Pod.
+
+scripts/destroy.sh atende somente homolog e exige DESTRUIR e plano revisado.
+Não usar em produção. Para uma limpeza de produção separadamente autorizada:
+
+1. Confirmar perfil/conta com STS, diretório environments/production e bucket
+   correto; isolar TF_DATA_DIR e manter workspace default.
+2. Inicializar somente o backend desse diretório, cuja chave é
+   production/terraform.tfstate. Não migrar/copiar state nem substituir a chave.
+3. Gerar um plano de destruição salvo em arquivo privado fora do Git, com tfvars
+   exclusivos de produção. Essa geração e a operação posterior exigem autorização
+   própria; não fazem parte desta preparação nem do workflow.
+4. Revisar os recursos e as dependências, confirmar que nenhum recurso de homolog
+   ou compartilhado será excluído e obter aprovação explícita do plano exato.
+5. Aplicar somente esse plano de limpeza aprovado por procedimento manual
+   controlado; o guard do pipeline normal deve continuar bloqueando destruições.
+6. Conferir a remoção apenas dos recursos autorizados e preservar state/bucket
+   e evidências. Não remover locks manualmente em caso de erro.
+
+Workflows não possuem destroy.
+Preservar bucket/state conforme a política do grupo. Não limpar durante a
+demonstração nem excluir recursos compartilhados.
+
+## Aplicação e Grafana
+
+Manifests NestJS estão no fork da aplicação: digest, ClusterIP, Job schema
+separado, startup node dist/main.js e PostgreSQL efêmero. Não executar seed ou
+apontar Job para RDS compartilhado. HPA sintético 1–4 e API 1–2 são testes distintos.
+
+Seguir o [plano Grafana](observability/PLANO-GRAFANA.md) sem duplicar release.
+Metrics Server atende HPA/top; Alloy envia métricas/logs/eventos. Para entrega
+integrada, consultar a [matriz de requisitos](docs/REQUISITOS-FASE-3.md).
+
+## Acesso local ao Swagger
+
+Com autorização de acesso, chave fora do Git e host previamente verificado,
+definir SSH_PRIVATE_KEY_PATH e CONTROL_PLANE_HOST no terminal privado. Em outra
+janela, manter o túnel abaixo ativo; não executá-lo junto dos testes locais:
+
+```bash
+ssh -i "$SSH_PRIVATE_KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UpdateHostKeys=no -o ConnectTimeout=5 -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:18080:127.0.0.1:18080 "ubuntu@$CONTROL_PLANE_HOST" \
+  'kubectl --context=kubernetes-admin@kubernetes -n oficina-tc3 port-forward --address=127.0.0.1 service/oficina-api 18080:3000'
+```
+
+Abrir http://127.0.0.1:18080/api/docs. O Service continua ClusterIP; não abre
+Security Group. Encerrar apenas o próprio túnel com Ctrl+C ao final. Isso não
+substitui integração com API Gateway/Lambda. Não mostrar JWT ou dados pessoais.
+
+[README](README.md) · [Documentação](docs/INDEX.md)

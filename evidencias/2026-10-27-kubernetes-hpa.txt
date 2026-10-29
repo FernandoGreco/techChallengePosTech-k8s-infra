@@ -1,0 +1,77 @@
+Tue Oct 27 11:49:12 UTC 2026
+NAME               STATUS   ROLES           AGE     VERSION    INTERNAL-IP     EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION   CONTAINER-RUNTIME
+ip-172-31-87-121   Ready    control-plane   11h     v1.34.12   172.31.87.121   <none>        Ubuntu 24.04.5 LTS   7.0.0-1014-aws   containerd://2.2.1
+ip-172-31-88-192   Ready    <none>          9m14s   v1.34.12   172.31.88.192   <none>        Ubuntu 24.04.5 LTS   7.0.0-1014-aws   containerd://2.2.1
+NAME                                       READY   STATUS    RESTARTS      AGE     IP               NODE               NOMINATED NODE   READINESS GATES
+calico-kube-controllers-59556d9b4c-mrs7h   1/1     Running   1 (54m ago)   11h     192.168.132.5    ip-172-31-87-121   <none>           <none>
+calico-node-7zqkq                          1/1     Running   1 (54m ago)   11h     172.31.87.121    ip-172-31-87-121   <none>           <none>
+calico-node-ghmwp                          1/1     Running   0             9m14s   172.31.88.192    ip-172-31-88-192   <none>           <none>
+coredns-66bc5c9577-9thld                   1/1     Running   1 (54m ago)   11h     192.168.132.6    ip-172-31-87-121   <none>           <none>
+coredns-66bc5c9577-g5hhf                   1/1     Running   1 (54m ago)   11h     192.168.132.4    ip-172-31-87-121   <none>           <none>
+etcd-ip-172-31-87-121                      1/1     Running   1 (54m ago)   11h     172.31.87.121    ip-172-31-87-121   <none>           <none>
+kube-apiserver-ip-172-31-87-121            1/1     Running   1 (54m ago)   11h     172.31.87.121    ip-172-31-87-121   <none>           <none>
+kube-controller-manager-ip-172-31-87-121   1/1     Running   1 (54m ago)   11h     172.31.87.121    ip-172-31-87-121   <none>           <none>
+kube-proxy-f6c24                           1/1     Running   0             9m14s   172.31.88.192    ip-172-31-88-192   <none>           <none>
+kube-proxy-xwnld                           1/1     Running   1 (54m ago)   11h     172.31.87.121    ip-172-31-87-121   <none>           <none>
+kube-scheduler-ip-172-31-87-121            1/1     Running   1 (54m ago)   11h     172.31.87.121    ip-172-31-87-121   <none>           <none>
+metrics-server-576c8c997c-d62z2            1/1     Running   0             11h     192.168.45.130   ip-172-31-88-192   <none>           <none>
+NAME                     SERVICE                      AVAILABLE   AGE
+v1beta1.metrics.k8s.io   kube-system/metrics-server   True        11h
+NAME               CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+ip-172-31-87-121   153m         7%       1817Mi          48%
+ip-172-31-88-192   60m          3%       792Mi           21%
+NAME                                           REFERENCE             TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/cpu-demo   Deployment/cpu-demo   cpu: 1%/50%   1         4         4          7m8s
+
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE    CONTAINERS   IMAGES                               SELECTOR
+deployment.apps/cpu-demo   4/4     4            4           7m8s   cpu-demo     registry.k8s.io/hpa-example:latest   app=cpu-demo
+
+NAME                            READY   STATUS    RESTARTS   AGE     IP               NODE               NOMINATED NODE   READINESS GATES
+pod/cpu-demo-859c9698db-f9m4x   1/1     Running   0          6m23s   192.168.45.133   ip-172-31-88-192   <none>           <none>
+pod/cpu-demo-859c9698db-fbjk7   1/1     Running   0          6m23s   192.168.45.134   ip-172-31-88-192   <none>           <none>
+pod/cpu-demo-859c9698db-ndwjw   1/1     Running   0          6m23s   192.168.45.135   ip-172-31-88-192   <none>           <none>
+pod/cpu-demo-859c9698db-xw2vv   1/1     Running   0          7m8s    192.168.45.131   ip-172-31-88-192   <none>           <none>
+Name:                                                  cpu-demo
+Namespace:                                             hpa-lab
+Labels:                                                <none>
+Annotations:                                           <none>
+CreationTimestamp:                                     Tue, 27 Oct 2026 11:42:05 +0000
+Reference:                                             Deployment/cpu-demo
+Metrics:                                               ( current / target )
+  resource cpu on pods  (as a percentage of request):  1% (1m) / 50%
+Min replicas:                                          1
+Max replicas:                                          4
+Deployment pods:                                       4 current / 4 desired
+Conditions:
+  Type            Status  Reason               Message
+  ----            ------  ------               -------
+  AbleToScale     True    ScaleDownStabilized  recent recommendations were higher than current one, applying the highest recent recommendation
+  ScalingActive   True    ValidMetricFound     the HPA was able to successfully calculate a replica count from cpu resource utilization (percentage of request)
+  ScalingLimited  True    TooManyReplicas      the desired replica count is more than the maximum replica count
+Events:
+  Type     Reason                        Age                    From                       Message
+  ----     ------                        ----                   ----                       -------
+  Warning  FailedGetResourceMetric       6m38s (x2 over 6m53s)  horizontal-pod-autoscaler  failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Warning  FailedComputeMetricsReplicas  6m38s (x2 over 6m53s)  horizontal-pod-autoscaler  invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: no metrics returned from resource metrics API
+  Normal   SuccessfulRescale             6m23s                  horizontal-pod-autoscaler  New size: 4; reason: cpu resource utilization (percentage of request) above target
+NAME                             READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/metrics-server   1/1     1            1           11h
+
+NAME                                        DESIRED   CURRENT   READY   AGE
+replicaset.apps/metrics-server-576c8c997c   1         1         1       11h
+replicaset.apps/metrics-server-75b5d87c9d   0         0         0       11h
+Tue Oct 27 11:50:11 UTC 2026
+NAME                                           REFERENCE             TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/cpu-demo   Deployment/cpu-demo   cpu: 1%/50%   1         4         4          8m6s
+
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/cpu-demo   1/1     1            1           8m6s
+
+NAME                            READY   STATUS    RESTARTS   AGE
+pod/cpu-demo-859c9698db-ndwjw   1/1     Running   0          7m21s
+LAST SEEN   TYPE     REASON              OBJECT                             MESSAGE
+7m21s       Normal   SuccessfulRescale   horizontalpodautoscaler/cpu-demo   New size: 4; reason: cpu resource utilization (percentage of request) above target
+5s          Normal   SuccessfulRescale   horizontalpodautoscaler/cpu-demo   New size: 1; reason: All metrics below target
+NAME               CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+ip-172-31-87-121   264m         13%      1818Mi          48%
+ip-172-31-88-192   62m          3%       793Mi           21%

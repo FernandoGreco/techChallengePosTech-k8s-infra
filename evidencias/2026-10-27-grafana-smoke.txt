@@ -1,0 +1,24 @@
+Teste real em 2026-10-27 13:12:53 UTC (10:12:53 America/Sao_Paulo).
+Namespace: grafana-monitoring
+Pod: tc3-observability-check
+Estado observado: Ready
+Log observado:
+{"event":"tc3-observability-check","source":"infra-validation"}
+Eventos observados:
+Normal Scheduled tc3-observability-check
+Normal Pulled    tc3-observability-check
+Normal Created   tc3-observability-check
+Normal Started   tc3-observability-check
+
+Pod isolado, sem ServiceAccount token, sem privilégios, sem acesso ao banco.
+Encerra após sleep 120; não foi excluído para preservar referência da evidência.
+Leitura dessas entradas no Grafana Cloud depende de confirmação no portal:
+o token de instalação não possui logs:read. Usuário escolheu confirmação manual.
+
+Verificação final de métricas Cloud em 2026-10-27 13:14:31 UTC:
+HTTP 200, dois nós únicos, séries CPU/memória de nós/pods;
+timestamp mais recente com 8 segundos de defasagem.
+
+Verificações locais: 13 scripts Bash e 3 PowerShell com sintaxe válida;
+helm lint passou; token literal ausente nos 21 arquivos verificados;
+git diff --check passou. Não houve commit/push/merge ou execução Terraform.
