@@ -1,0 +1,48 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+namespace: production-hpa-lab
+images:
+  - name: registry.k8s.io/hpa-example
+    newName: registry.k8s.io/hpa-example
+    digest: sha256:581697a37f0e136db86d6b30392f0db40ce99c8248a7044c770012f4e8491544
+patches:
+  - target:
+      kind: Namespace
+      name: hpa-lab
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: production-hpa-lab
+      - op: add
+        path: /metadata/labels
+        value:
+          app.kubernetes.io/managed-by: tc3-production-hpa
+  - target:
+      kind: Deployment
+      name: cpu-demo
+    patch: |-
+      - op: add
+        path: /spec/template/spec/automountServiceAccountToken
+        value: false
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: cpu-demo
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 2
+      - op: add
+        path: /spec/behavior
+        value:
+          scaleDown:
+            stabilizationWindowSeconds: 30
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 15
+          scaleUp:
+            stabilizationWindowSeconds: 0
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 15

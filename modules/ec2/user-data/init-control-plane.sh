@@ -21,6 +21,8 @@ echo "IP do Control Plane: $NODE_IP"
 
 # Inicializar Kubernetes
 kubeadm init \
+  --skip-token-print \
+  --token-ttl=10m \
   --apiserver-advertise-address="$NODE_IP" \
   --pod-network-cidr=192.168.0.0/16
 
@@ -34,12 +36,5 @@ install -m 600 -o ubuntu -g ubuntu \
 echo "Control Plane inicializado com sucesso."
 echo "Proxima etapa: instalar Calico e associar o Worker."
 
-echo ""
-echo "Gerando comando de associacao do Worker..."
-
-kubeadm token create --print-join-command > /home/ubuntu/kubeadm-join.sh
-
-chmod 600 /home/ubuntu/kubeadm-join.sh
-chown ubuntu:ubuntu /home/ubuntu/kubeadm-join.sh
-
-echo "Comando de associacao gerado com sucesso."
+# Join is orchestrated after Apply, with a short-lived token sent via stdin.
+# Do not persist another bootstrap token in the ubuntu home directory.

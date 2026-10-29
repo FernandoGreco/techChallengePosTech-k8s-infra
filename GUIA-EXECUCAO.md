@@ -207,6 +207,10 @@ O script é bloqueado em Actions e tem homolog hardcoded: **não usar em produç
 
 O workflow de produção prepara EC2/cloud-init. Associação do Worker e validação
 de Kubernetes exigem etapa operacional revisada e autorizada separadamente.
+O [bootstrap de produção pós-Apply](docs/BOOTSTRAP-PRODUCAO.md) implementa essa
+etapa sem executar Terraform: valida IDs/tags da conta, associa o Worker por
+stdin com token temporário, configura certificados e Metrics Server seguro.
+O laboratório HPA de produção usa namespace próprio e carga limitada explícita.
 Os novos volumes raiz de produção usam criptografia explícita. O módulo mantém
 null como padrão para os consumidores existentes, sem alterar a opção de homolog.
 Apply inicial sozinho não comprova cluster de produção Ready.

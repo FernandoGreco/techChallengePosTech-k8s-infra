@@ -4,6 +4,19 @@ Cada registro identifica seu alcance e a data de coleta/confirmação.
 Uma observação histórica não garante o estado atual do ambiente.
 Confirmações manuais não são apresentadas como resultados automatizados.
 
+## Fechamento de 29/10/2026
+
+- [Homologação](../docs/EVIDENCIAS-HOMOLOG.md): Plan/Apply históricos recuperados,
+  consultas AWS e Kubernetes atual, sem repetir carga.
+- [Produção](../docs/EVIDENCIAS-PRODUCAO.md): Apply aprovado, confirmação EC2/EBS/SG/S3
+  e bootstrap Kubernetes com dois nós Ready, Metrics Server TLS e HPA sintético.
+- [Saídas reais de produção](2026-10-29-producao-kubernetes-hpa.txt): escala 1→2→1,
+  carga encerrada, contadores HTTP com timeouts e preservação de homologação.
+- [CI/CD e checklist FIAP](../docs/CI-CD.md): fontes primárias e alcance por requisito.
+
+As saídas originais abaixo foram preservadas. Seus resultados mantêm a data
+original; não foram convertidos em validações novas.
+
 ## Infraestrutura e Kubernetes
 
 | Arquivo | Comprovação |
@@ -34,7 +47,8 @@ O marcador de teste não comprova JSON/correlação de logs de negócio.
 
 [CI-CD.md](CI-CD.md) apresenta referências de execuções documentadas, os controles
 de aprovação protegida e a distinção entre testes locais e confirmação manual
-do Apply. Não declara execução remota de produção.
+do Apply no catálogo anterior. As consultas atuais e a execução real de produção
+estão no [fechamento de CI/CD](../docs/CI-CD.md).
 
 ## Integridade e privacidade
 

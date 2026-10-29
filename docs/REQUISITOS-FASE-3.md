@@ -6,9 +6,9 @@ atribuir ao repositório de infraestrutura funcionalidades de outros serviços.
 
 | Requisito | Implementação ou comprovação deste repositório | Escopo complementar |
 | --- | --- | --- |
-| Kubernetes e Terraform | kubeadm/EC2 demonstrados; states independentes | Operação de produção requer configuração/evidência próprias |
-| Escalabilidade | HPA sintético observado; HPA API com confirmação manual identificada | Não equivale a autoscaling de EC2 ou benchmark independente |
-| CI/CD homolog/produção | Workflow com CI, Plan salvo e aprovação protegida | Execução remota de produção não comprovada pelo catálogo |
+| Kubernetes e Terraform | Dois nós Ready nos dois ambientes; Terraform/AWS, states independentes, Calico e Metrics Server comprovados | Bootstrap de produção é etapa explícita pós-Apply, não parte do workflow Terraform |
+| Escalabilidade | HPA sintético homolog 1→4→1 e produção 1→2→1; HPA API com confirmação manual identificada | Não equivale a autoscaling de EC2 ou benchmark independente; HTTP do teste sintético de produção teve timeouts |
+| CI/CD homolog/produção | CI, Plan salvo e Apply protegido executados no fork nos dois ambientes | Deploy NestJS e execução no repositório oficial não comprovados por esses runs |
 | Aplicação em Kubernetes | NestJS e PostgreSQL efêmero demonstrados | Pipeline da aplicação é mantido em seu repositório |
 | Banco gerenciado | PostgreSQL emptyDir não atende a esse requisito | Repositório de banco gerenciado |
 | Gateway e CPF/Lambda/JWT | Não comprovados por Swagger ou resposta HTTP 401 isolada | Autenticação/Gateway/aplicação |
@@ -21,6 +21,10 @@ atribuir ao repositório de infraestrutura funcionalidades de outros serviços.
 
 O fluxo inicia automaticamente e mantém aprovação humana antes do Apply.
 O catálogo distingue código implementado, consulta registrada e confirmação
-manual; produção preparada não é declarada como cluster provisionado.
+manual. Em 29/10/2026, as EC2, volumes criptografados, SG e state de produção
+foram confirmados na AWS. Após bootstrap autorizado, também foram confirmados
+dois nós Ready, Calico, métricas TLS e HPA sintético de produção 1→2→1.
+O [checklist atualizado](CI-CD.md#checklist-de-requisitos-fiap) apresenta os estados
+implementado, validado e pendente, com fontes por requisito.
 
 [Arquitetura](ARQUITETURA-INFRA.md) · [Evidências](../evidencias/INDEX.md) · [README](../README.md)
