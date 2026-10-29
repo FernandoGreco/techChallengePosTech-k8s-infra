@@ -20,6 +20,7 @@ resource "aws_instance" "control_plane" {
   root_block_device {
     volume_size = 20
     volume_type = "gp3"
+    encrypted   = var.root_volume_encrypted
   }
 
   tags = {
@@ -48,6 +49,7 @@ resource "aws_instance" "worker" {
   root_block_device {
     volume_size = 20
     volume_type = "gp3"
+    encrypted   = var.root_volume_encrypted
   }
 
   tags = {

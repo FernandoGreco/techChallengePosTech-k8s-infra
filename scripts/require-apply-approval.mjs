@@ -8,7 +8,8 @@ export function resolveRequest(env) {
     return { plan: false, apply: false };
   }
   const target = deploymentTarget(env);
-  if (target.name === 'production' && env.PRODUCTION_CAPACITY_APPROVED !== 'true') {
+  const planOnly = env.GITHUB_EVENT_NAME === 'workflow_dispatch' && action === 'plan';
+  if (target.name === 'production' && !planOnly && env.PRODUCTION_CAPACITY_APPROVED !== 'true') {
     throw new Error('Production requires PRODUCTION_CAPACITY_APPROVED=true after capacity/cost review');
   }
   if (env.GITHUB_EVENT_NAME === 'push') {

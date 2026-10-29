@@ -85,6 +85,32 @@ test('node-disrupting EC2 updates are blocked for either Terraform environment',
   }
 });
 
+test('encrypted roots are allowed on creation but encryption changes on existing nodes are blocked', () => {
+  for (const environment of ['homolog', 'production']) {
+    for (const name of ['control_plane', 'worker']) {
+      const attributes = encrypted => ({
+        tags: { Environment: environment },
+        root_block_device: [{ volume_size: 20, volume_type: 'gp3', encrypted }],
+      });
+      const resource = { type: 'aws_instance', mode: 'managed', address: `module.ec2.aws_instance.${name}` };
+      const created = summarizePlan({ resource_changes: [{ ...resource,
+        change: { actions: ['create'], before: null, after: attributes(true) } }] });
+      assert.equal(created.create, 1);
+      assert.equal(created.blocked, false);
+      for (const beforeEncrypted of [false, true]) {
+        const updated = summarizePlan({ resource_changes: [{ ...resource,
+          change: { actions: ['update'], before: attributes(beforeEncrypted), after: attributes(!beforeEncrypted) } }] });
+        assert.equal(updated.blocked, true);
+        assert.equal(updated.blocked_instance_updates, 1);
+        assert.deepEqual(updated.resources[0].changed_fields, ['root_block_device']);
+      }
+      const unchanged = summarizePlan({ resource_changes: [{ ...resource,
+        change: { actions: ['no-op'], before: attributes(false), after: attributes(false) } }] });
+      assert.equal(unchanged.blocked, false);
+    }
+  }
+});
+
 test('summary CLI exits nonzero for EC2 user-data updates and zero for tag-only updates', () => {
   for (const change of [
     { actions: ['update'], before: { user_data: 'synthetic-old-private' }, after: { user_data: 'synthetic-new-private' } },
@@ -154,7 +180,8 @@ test('manual validation and plan never request apply; manual apply still require
     { GITHUB_REF: 'refs/heads/main' }, { APPLY_CONFIRMATION: '' },
     { APPLY_CONFIRMATION: 'aplicar homolog' }, { REQUESTED_ACTION: 'destroy' },
   ]) assert.throws(() => checkRequest({ ...request, ...override }));
-  assert.throws(() => resolveRequest({ ...plan, GITHUB_REF: 'refs/heads/main' }));
+  assert.deepEqual(resolveRequest({ ...plan, GITHUB_REF: 'refs/heads/main' }), { plan: true, apply: false });
+  assert.throws(() => checkRequest({ ...plan, GITHUB_REF: 'refs/heads/main' }));
 });
 
 test('apply rejects missing reviewers, administrative bypass and any branch policy except homolog', () => {
@@ -205,7 +232,7 @@ test('request CLI emits routing outputs without contacting AWS or the Environmen
     rmdirSync(dir);
   }
 });
-test('production push and dispatch use main and require explicit capacity review', () => {
+test('production push and manual apply require capacity review and target-specific confirmation', () => {
   const main = { ...requestBase, GITHUB_REF: 'refs/heads/main', PRODUCTION_CAPACITY_APPROVED: 'true' };
   assert.deepEqual(resolveRequest({ ...main, GITHUB_EVENT_NAME: 'push' }), { plan: true, apply: true });
   assert.deepEqual(resolveRequest({ ...main, REQUESTED_ACTION: 'plan' }), { plan: true, apply: false });
@@ -217,6 +244,24 @@ test('production push and dispatch use main and require explicit capacity review
   // A pure CI request remains available before enabling a second infrastructure.
   assert.deepEqual(resolveRequest({ ...main, PRODUCTION_CAPACITY_APPROVED: '', REQUESTED_ACTION: 'validate' }), { plan: false, apply: false });
 });
+test('only explicit production manual plan bypasses capacity approval and can never request apply', () => {
+  for (const capacity of [undefined, '', 'false', 'true']) {
+    const env = { ...requestBase, GITHUB_REF: 'refs/heads/main', REQUESTED_ACTION: 'plan' };
+    if (capacity !== undefined) env.PRODUCTION_CAPACITY_APPROVED = capacity;
+    assert.deepEqual(resolveRequest(env), { plan: true, apply: false });
+    assert.throws(() => checkRequest(env));
+    if (capacity !== 'true') {
+      assert.throws(() => resolveRequest({ ...env, GITHUB_EVENT_NAME: 'push' }));
+      assert.throws(() => resolveRequest({ ...env, REQUESTED_ACTION: 'apply', APPLY_CONFIRMATION: 'APLICAR PRODUCTION' }));
+    }
+    for (const override of [
+      { GITHUB_EVENT_NAME: 'pull_request' }, { GITHUB_EVENT_NAME: 'workflow_run' },
+      { GITHUB_REF: 'refs/heads/feature/test' }, { GITHUB_REF: 'refs/tags/main' },
+      { GITHUB_REPOSITORY: 'other/repository' },
+    ]) assert.throws(() => resolveRequest({ ...env, ...override }));
+  }
+});
+
 test('repository adaptation is explicit and restricted to the known original repository', () => {
   const upstream = 'FernandoGreco/techChallengePosTech-k8s-infra';
   assert.throws(() => resolveRequest({ ...requestBase, GITHUB_REPOSITORY: upstream }));

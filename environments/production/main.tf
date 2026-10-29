@@ -27,6 +27,8 @@ module "ec2" {
   instance_type     = "t3.medium"
   ami_id            = data.aws_ami.ubuntu.id
   ssh_key_name      = var.ssh_key_name
+
+  root_volume_encrypted = true
 }
 
 data "aws_ami" "ubuntu" {

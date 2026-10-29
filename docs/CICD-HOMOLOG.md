@@ -30,10 +30,11 @@ corresponde ao gatilho. Falha no CI impede Plan/Apply.
 | Push homolog | CI, Plan e encaminhamento à aprovação |
 | Push main | Equivalente, exigindo PRODUCTION_CAPACITY_APPROVED=true no repositório |
 | Dispatch validate | CI sem AWS, mesmo com produção desabilitada |
-| Dispatch plan | Somente Plan na branch alvo |
+| Dispatch plan | Somente Plan na branch alvo; produção dispensa a flag de capacidade |
 | Dispatch apply | Confirmação APLICAR HOMOLOG ou APLICAR PRODUCTION e aprovação humana |
 
-Sem confirmação de capacidade, produção falha antes do acesso AWS.
+Sem confirmação de capacidade, push e dispatch apply de produção falham antes do
+acesso AWS. O dispatch explícito plan permite revisão sem encaminhar Apply.
 A verificação SSH opcional permanece somente em homolog/validate e depende de rede
 previamente autorizada. O fluxo inicia automaticamente, mas não equivale a Apply
 automático sem intervenção humana.

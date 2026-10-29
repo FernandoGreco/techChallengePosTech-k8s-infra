@@ -81,6 +81,8 @@ Push/merge inicia CI, Terraform Validate e Plan salvo. Apply exige **aprovação
 humana obrigatória**. Produção também exige a variável de repositório
 PRODUCTION_CAPACITY_APPROVED=true, após avaliação de capacidade/custos:
 o Lab não é presumido capaz de manter dois clusters simultâneos.
+O dispatch manual com action=plan permite revisar produção sem essa flag e sem
+encaminhar Apply. Push e action=apply continuam sujeitos à confirmação de capacidade.
 
 O Apply utiliza o plano salvo da mesma execução, criptografado com AES-256-GCM.
 Integridade, validade de quatro horas e contexto de conta, região, commit,

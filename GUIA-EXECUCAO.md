@@ -125,6 +125,17 @@ ser herdados quando permitido; um Environment não herda secrets de outro.
 O job Apply não precisa de tfvars, pois aplica o plano salvo.
 O perfil local não autentica runners. OIDC não foi introduzido no Lab.
 
+Para somente Plan manual de produção, `production` precisa dos três Secrets AWS,
+de `TFVARS_PRODUCTION` e de `AWS_ACCOUNT_ID`; `TF_BACKEND_BUCKET` é recomendado.
+`TF_PLAN_ENCRYPTION_KEY` e as proteções de `production-apply` são necessárias
+somente no fluxo que encaminha Apply. Sua ausência não impede o Plan-only.
+`TERRAFORM_STATE_ROOT`, do antigo backend local, não é lida pelo workflow S3.
+
+O [modelo de produção](environments/production/terraform.tfvars.example) contém
+referências da conta demonstrada, que precisam ser revalidadas. O CIDR é um
+placeholder intencional: confirmar o IP público atual antes de cadastrar o Secret.
+Não adicionar credenciais AWS, chave privada ou configuração de backend a tfvars.
+
 Variables de **repositório**:
 
 - INFRA_DEPLOY_REPOSITORY: opcional no fork. No original, definir exatamente
@@ -133,6 +144,12 @@ Variables de **repositório**:
 - PRODUCTION_CAPACITY_APPROVED: manter ausente/false até revisar quotas, custos,
   tempo de Lab e isolamento. Definir true apenas após decisão explícita.
   Esse sinal não consulta automaticamente quotas AWS.
+  O dispatch explícito action=plan dispensa essa flag e nunca encaminha Apply.
+  Push e dispatch action=apply continuam exigindo true para produção.
+  Cadastrar em Settings > Secrets and variables > Actions > Variables, no escopo
+  Repository. Uma variável somente no Environment não atende ao job request,
+  que não declara Environment. A flag também libera o encaminhamento protegido
+  de Apply em pushes futuros; ela não seleciona o modo Plan-only.
 
 State vazio de produção propõe recursos próprios. Preferir conta/Lab separado
 quando não houver capacidade de coexistência. Encerrar outro ambiente exige
@@ -170,6 +187,12 @@ ou APLICAR PRODUCTION e ainda depende da aprovação humana. A verificação SSH
 opcional permanece somente em homolog: SSH_PRIVATE_KEY, CONTROL_PLANE_HOST,
 SSH_KNOWN_HOSTS e rede previamente autorizada; não abre SG.
 
+Para validar somente o Plan, usar uma nova execução manual em main com action=plan,
+confirm_apply vazio e verify_kubernetes=false. Não reexecutar um run de push para
+essa finalidade: push solicita Plan e encaminhamento de Apply. O Plan-only não
+publica artefato para Apply posterior; esse outro fluxo gera seu próprio plano
+na mesma execução e exige nova revisão. Plan remoto cria/remove lock S3.
+
 O guard bloqueia exclusões, substituições, user_data/user_data_base64 e alterações
 disruptivas de EC2: AMI, tipo, subnet/AZ, Key Pair, disco raiz, SGs da instância e
 source_dest_check. Outras alterações, inclusive de rede permitidas pelo plano,
@@ -184,6 +207,8 @@ O script é bloqueado em Actions e tem homolog hardcoded: **não usar em produç
 
 O workflow de produção prepara EC2/cloud-init. Associação do Worker e validação
 de Kubernetes exigem etapa operacional revisada e autorizada separadamente.
+Os novos volumes raiz de produção usam criptografia explícita. O módulo mantém
+null como padrão para os consumidores existentes, sem alterar a opção de homolog.
 Apply inicial sozinho não comprova cluster de produção Ready.
 Verificar EC2/checks, cloud-init, kubelet/containerd, join, Calico, Metrics Server,
 top, HPA e telemetria. Não repetir provisionamento no cluster operacional.
