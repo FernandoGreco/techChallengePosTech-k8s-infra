@@ -1,0 +1,20 @@
+﻿Metrics Server: spec identica antes/depois=True
+Generation antes=3, depois=3
+Ocorrencias de kubelet-insecure-tls=1
+Instalando Metrics Server v0.8.0...
+serviceaccount/metrics-server unchanged
+clusterrole.rbac.authorization.k8s.io/system:aggregated-metrics-reader unchanged
+clusterrole.rbac.authorization.k8s.io/system:metrics-server unchanged
+rolebinding.rbac.authorization.k8s.io/metrics-server-auth-reader unchanged
+clusterrolebinding.rbac.authorization.k8s.io/metrics-server:system:auth-delegator unchanged
+clusterrolebinding.rbac.authorization.k8s.io/system:metrics-server unchanged
+service/metrics-server unchanged
+deployment.apps/metrics-server configured
+apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io unchanged
+Aguardando inicializacao do Metrics Server...
+deployment "metrics-server" successfully rolled out
+Verificando disponibilidade da API de metricas...
+apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io condition met
+NAME                     SERVICE                      AVAILABLE   AGE
+v1beta1.metrics.k8s.io   kube-system/metrics-server   True        11h
+Instalacao do Metrics Server finalizada.

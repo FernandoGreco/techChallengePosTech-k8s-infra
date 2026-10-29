@@ -4,7 +4,8 @@ on:
   pull_request:
     branches: [main, homolog]
   push:
-    branches: [main, 'feature/**']
+    # homolog/main invoke this reusable CI through Terraform Deploy.
+    branches: ['feature/**']
   workflow_dispatch:
   workflow_call:
 
@@ -34,11 +35,13 @@ jobs:
       - name: Install pinned validators
         run: bash scripts/install-ci-tools.sh
       - name: Terraform formatting and validation without backend
-        working-directory: environments/homolog
         run: |
-          terraform fmt -check -recursive ../..
-          terraform init -backend=false -input=false -lockfile=readonly
-          terraform validate -no-color
+          set -euo pipefail
+          terraform fmt -check -recursive
+          for target in homolog production; do
+            TF_DATA_DIR="$RUNNER_TEMP/terraform-ci-$target" terraform -chdir="environments/$target" init -backend=false -input=false -lockfile=readonly
+            TF_DATA_DIR="$RUNNER_TEMP/terraform-ci-$target" terraform -chdir="environments/$target" validate -no-color
+          done
       - name: Validate every Bash file separately
         run: |
           set -euo pipefail

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { summarizePlan } from '../scripts/terraform-plan-summary.mjs';
 import { seal, unseal } from '../scripts/plan-artifact.mjs';
 import { resolveRequest, checkRequest, checkEnvironment } from '../scripts/require-apply-approval.mjs';
+import { deploymentTarget, targets } from '../scripts/deployment-target.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, unlinkSync, rmdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -64,6 +65,25 @@ test('initial EC2 creation, no-op and tag-only updates remain allowed', () => {
     assert.equal(result.blocked_user_data_updates, 0);
   }
 });
+test('node-disrupting EC2 updates are blocked for either Terraform environment', () => {
+  for (const target of Object.values(targets)) {
+    for (const key of ['ami', 'instance_type', 'subnet_id', 'availability_zone', 'key_name',
+      'root_block_device', 'vpc_security_group_ids', 'source_dest_check']) {
+      for (const change of [
+        { before: { [key]: 'old-private' }, after: { [key]: 'new-private' } },
+        { before: { [key]: 'old-private' }, after: {}, after_unknown: { [key]: true } },
+        { before: { [key]: 'same' }, after: { [key]: 'same' }, after_unknown: { [key]: [{ nested: true }] } },
+      ]) {
+        const result = summarizePlan({ resource_changes: [{ type: 'aws_instance',
+          address: 'module.ec2.aws_instance.worker', change: { actions: ['update'], ...change } }] });
+        assert.equal(result.blocked, true, `${target.branch}:${key}`);
+        assert.equal(result.blocked_instance_updates, 1);
+        assert.ok(!JSON.stringify(result).includes('old-private'));
+        assert.ok(!JSON.stringify(result).includes('new-private'));
+      }
+    }
+  }
+});
 
 test('summary CLI exits nonzero for EC2 user-data updates and zero for tag-only updates', () => {
   for (const change of [
@@ -88,7 +108,9 @@ test('summary CLI exits nonzero for EC2 user-data updates and zero for tag-only 
 
 test('artifact rejects tampering, wrong key, expired plan and wrong commit/run/account/region', () => {
   const key = 'synthetic-test-key-with-more-than-32-characters';
-  const context = { commit: 'abc', run: '123', account: '000000000000', region: 'test-region' };
+  const context = { commit: 'abc', run: '123', account: '000000000000', region: 'test-region',
+    repository: 'test/repository', environment: 'homolog', bucket: 'test-bucket',
+    stateKey: 'homolog/terraform.tfstate', attempt: '1' };
   const bytes = Buffer.from('synthetic plan bytes');
   const encrypted = seal(bytes, key, context);
   assert.deepEqual(unseal(encrypted, key, context), bytes);
@@ -164,7 +186,12 @@ test('request CLI emits routing outputs without contacting AWS or the Environmen
           GITHUB_OUTPUT: output, GH_TOKEN: '', HTTPS_PROXY: 'http://127.0.0.1:1' },
       });
       assert.equal(result.status, 0, result.stderr);
-      assert.equal(readFileSync(output, 'utf8'), expected);
+      const text = readFileSync(output, 'utf8');
+      assert.ok(text.startsWith(expected));
+      if (expected.includes('plan=true')) {
+        assert.ok(text.includes('environment=homolog\n'));
+        assert.ok(text.includes('state_key=homolog/terraform.tfstate\n'));
+      } else assert.equal(text, expected);
     }
     writeFileSync(output, '');
     const rejected = spawnSync(process.execPath, ['scripts/require-apply-approval.mjs', 'request'], {
@@ -177,6 +204,83 @@ test('request CLI emits routing outputs without contacting AWS or the Environmen
     if (existsSync(output)) unlinkSync(output);
     rmdirSync(dir);
   }
+});
+test('production push and dispatch use main and require explicit capacity review', () => {
+  const main = { ...requestBase, GITHUB_REF: 'refs/heads/main', PRODUCTION_CAPACITY_APPROVED: 'true' };
+  assert.deepEqual(resolveRequest({ ...main, GITHUB_EVENT_NAME: 'push' }), { plan: true, apply: true });
+  assert.deepEqual(resolveRequest({ ...main, REQUESTED_ACTION: 'plan' }), { plan: true, apply: false });
+  assert.doesNotThrow(() => checkRequest({ ...main, REQUESTED_ACTION: 'apply', APPLY_CONFIRMATION: 'APLICAR PRODUCTION' }));
+  for (const override of [{ PRODUCTION_CAPACITY_APPROVED: '' }, { PRODUCTION_CAPACITY_APPROVED: 'false' },
+    { APPLY_CONFIRMATION: 'APLICAR HOMOLOG' }, { DEPLOY_ENVIRONMENT: 'homolog' }, { GITHUB_REF: 'refs/heads/production' }]) {
+    assert.throws(() => checkRequest({ ...main, REQUESTED_ACTION: 'apply', APPLY_CONFIRMATION: 'APLICAR PRODUCTION', ...override }));
+  }
+  // A pure CI request remains available before enabling a second infrastructure.
+  assert.deepEqual(resolveRequest({ ...main, PRODUCTION_CAPACITY_APPROVED: '', REQUESTED_ACTION: 'validate' }), { plan: false, apply: false });
+});
+test('repository adaptation is explicit and restricted to the known original repository', () => {
+  const upstream = 'FernandoGreco/techChallengePosTech-k8s-infra';
+  assert.throws(() => resolveRequest({ ...requestBase, GITHUB_REPOSITORY: upstream }));
+  assert.deepEqual(resolveRequest({ ...requestBase, GITHUB_REPOSITORY: upstream, INFRA_DEPLOY_REPOSITORY: upstream }), { plan: false, apply: false });
+  for (const name of ['other/repository', '*', '']) {
+    assert.throws(() => resolveRequest({ ...requestBase, GITHUB_REPOSITORY: 'other/repository', INFRA_DEPLOY_REPOSITORY: name }));
+  }
+});
+test('both Apply environments require reviewers, no admin bypass and the exact branch', () => {
+  const environment = { can_admins_bypass: false, protection_rules: [{ type: 'required_reviewers', reviewers: [{}] }],
+    deployment_branch_policy: { custom_branch_policies: true } };
+  for (const branch of ['homolog', 'main']) {
+    assert.doesNotThrow(() => checkEnvironment(environment, [{ name: branch, type: 'branch' }], branch));
+    for (const policies of [[], [{ name: '*', type: 'branch' }], [{ name: branch, type: 'tag' }],
+      [{ name: 'homolog', type: 'branch' }, { name: 'main', type: 'branch' }]]) {
+      assert.throws(() => checkEnvironment(environment, policies, branch));
+    }
+    assert.throws(() => checkEnvironment({ ...environment, can_admins_bypass: true }, [{ name: branch, type: 'branch' }], branch));
+    assert.throws(() => checkEnvironment({ ...environment, protection_rules: [] }, [{ name: branch, type: 'branch' }], branch));
+  }
+});
+test('production routing CLI selects only the production state, directory and secret', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tc3-production-routing-'));
+  const output = join(dir, 'outputs');
+  try {
+    writeFileSync(output, '');
+    const result = spawnSync(process.execPath, ['scripts/require-apply-approval.mjs', 'request'], {
+      encoding: 'utf8', env: { ...process.env, ...requestBase, GITHUB_REF: 'refs/heads/main',
+        GITHUB_EVENT_NAME: 'push', GITHUB_OUTPUT: output, PRODUCTION_CAPACITY_APPROVED: 'true',
+        PUSH_DELETED: 'false', INFRA_DEPLOY_REPOSITORY: requestBase.GITHUB_REPOSITORY },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const values = Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map(x => x.split('=')));
+    assert.deepEqual(values, { plan: 'true', apply: 'true', environment: 'production',
+      directory: 'environments/production', apply_environment: 'production-apply',
+      state_key: 'production/terraform.tfstate', tfvars_secret: 'TFVARS_PRODUCTION' });
+  } finally { if (existsSync(output)) unlinkSync(output); rmdirSync(dir); }
+});
+test('Terraform targets have separate backend keys and environment tags; pipeline applies only a saved plan', () => {
+  assert.notEqual(targets.homolog.stateKey, targets.production.stateKey);
+  for (const [name, target] of Object.entries(targets)) {
+    assert.equal(deploymentTarget({ GITHUB_REF: `refs/heads/${target.branch}` }).name, name);
+    const versions = readFileSync(`${target.directory}/versions.tf`, 'utf8');
+    assert.ok(versions.includes(`key          = "${target.stateKey}"`));
+    assert.match(versions, /use_lockfile\s*=\s*true/);
+    assert.ok(readFileSync(`${target.directory}/providers.tf`, 'utf8').includes(`Environment = "${name}"`));
+    assert.ok(readFileSync(`${target.directory}/main.tf`, 'utf8').includes(`environment       = "${name}"`));
+    assert.equal(readFileSync(`${target.directory}/.terraform.lock.hcl`, 'utf8'), readFileSync('environments/homolog/.terraform.lock.hcl', 'utf8'));
+  }
+  const workflow = readFileSync('.github/workflows/terraform-deploy.yml', 'utf8');
+  assert.match(workflow, /branches: \[homolog, main\]/);
+  assert.ok(workflow.includes("group: terraform-infra-${{ github.ref == 'refs/heads/main' && 'production' || 'homolog' }}"));
+  assert.ok(workflow.includes('environment: ${{ needs.request.outputs.apply_environment }}'));
+  assert.ok(workflow.includes('TFVARS_CONTENT: ${{ secrets[needs.request.outputs.tfvars_secret] }}'));
+  assert.equal((workflow.match(/terraform plan /g) || []).length, 1);
+  assert.equal((workflow.match(/terraform apply /g) || []).length, 1);
+  assert.match(workflow, /terraform apply -input=false -lock-timeout=60s "\$RUNNER_TEMP\/reviewed.tfplan"/);
+  assert.equal((workflow.match(/node .*terraform-plan-summary.mjs/g) || []).length, 2);
+  assert.ok(!workflow.includes('terraform destroy'));
+  assert.ok(!workflow.includes('kubectl apply'));
+  assert.equal((workflow.match(/TF_WORKSPACE: default/g) || []).length, 2);
+  const ci = readFileSync('.github/workflows/terraform-validate.yml', 'utf8');
+  assert.ok(ci.includes('for target in homolog production; do'));
+  assert.ok(ci.includes("branches: ['feature/**']"));
 });
 test('legacy deploy refuses GitHub Actions before invoking AWS or Terraform', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tc3-no-deploy-'));
