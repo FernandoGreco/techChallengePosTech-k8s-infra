@@ -12,7 +12,9 @@ objeto de state ou presumir disponibilidade para outro par de EC2.
 
 Selecionar homolog pela branch homolog e production pela main, reutilizando o CI.
 Separar diretórios, chaves S3, Environments e tfvars.
-Exigir confirmação externa de capacidade antes de Plan/Apply de produção.
+Exigir confirmação externa de capacidade em pushes e solicitações de Apply de
+produção. Permitir revisão por dispatch explícito action=plan sem essa flag,
+sempre com apply=false e sem encaminhamento ao Environment de Apply.
 
 Apply exige revisão humana e utiliza o plano salvo criptografado, vinculado a
 ambiente, backend, conta, repositório, commit, run e tentativa. Revalidar conta,
